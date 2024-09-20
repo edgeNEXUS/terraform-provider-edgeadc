@@ -1,0 +1,39 @@
+name: Release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Needed for release notes
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_TOKEN }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.23
+
+      - name: Install PGP private key
+        shell: bash
+        env:
+          PGP_PRIVATE_KEY: ${{ secrets.PGP_PRIVATE_KEY }}
+        run: echo "$PGP_PRIVATE_KEY" | gpg --batch --import
+
+      - name: Publish Release
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          GPG_FINGERPRINT: ${{ secrets.GPG_FINGERPRINT }}
+        run: |
+          git config --global user.name ${{ secrets.EDGEADC_GITHUB_SERVICE_ACCOUNT_USERNAME }}
+          git config --global user.email ${{ secrets.EDGEADC_GITHUB_SERVICE_ACCOUNT_EMAIL }}
+
+          ./scripts/release.sh
+
+          make release-publish

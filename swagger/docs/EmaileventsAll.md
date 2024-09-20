@@ -1,0 +1,46 @@
+# EmaileventsAll
+
+## Properties
+Name | Type | Description | Notes
+------------ | ------------- | ------------- | -------------
+**Success** | **string** | true | [optional] [default to null]
+**StatusImage** | **string** | images/light-hd_red.gif | [optional] [default to null]
+**StatusText** | **string** | get | [optional] [default to null]
+**SecurityCombo** | [***EmaileventsAllSecurityCombo**](Emailevents_All_SecurityCombo.md) |  | [optional] [default to null]
+**CEERemoteEmailAddress** | **string** | a.x@a.com | [optional] [default to null]
+**CEELocalEmailAddress** | **string** | a.b@x.com | [optional] [default to null]
+**CEEMailServer** | **string** | mail.x.com | [optional] [default to null]
+**CEEPort** | **string** | 25 | [optional] [default to null]
+**CEETimeout** | **string** | 1 | [optional] [default to null]
+**CEEAuthorisationRequired** | **string** | 1 | [optional] [default to null]
+**CEESecurity** | **string** | 0 | [optional] [default to null]
+**CEEMailServerLogon** | **string** | a.x@x.co | [optional] [default to null]
+**CEEEvIpServiceNoticeEnabled** | **string** | 1 | [optional] [default to null]
+**CEEEvIpServiceNoticeText** | **string** | 1 | [optional] [default to null]
+**CEEEvIpServiceAlertTextEnabled** | **string** | 1 | [optional] [default to null]
+**CEEEvIpServiceAlertText** | **string** | 10 | [optional] [default to null]
+**CEEEvChannelNoticeEnabled** | **string** | 0 | [optional] [default to null]
+**CEEEvChannelNoticeText** | **string** | 2 | [optional] [default to null]
+**CEEEvChannelAlertEnabled** | **string** | 1 | [optional] [default to null]
+**CEEEvChannelAlertText** | **string** | 11 | [optional] [default to null]
+**CEEEvContentServerNoticeEnabled** | **string** | 1 | [optional] [default to null]
+**CEEEvContentServerNoticeText** | **string** | 3 | [optional] [default to null]
+**CEEEvContentServerAlertEnabled** | **string** | 1 | [optional] [default to null]
+**CEEEvContentServerAlertText** | **string** | 12 | [optional] [default to null]
+**CEEEvFlightPathEnabled** | **string** | 0 | [optional] [default to null]
+**CEEEvFlightPathText** | **string** | 4 | [optional] [default to null]
+**CEEGroupEnabled** | **string** | 1 | [optional] [default to null]
+**CEEGroupText** | **string** | 5 | [optional] [default to null]
+**CEEGroupTime** | **string** | 6 | [optional] [default to null]
+**CEEEvDiskSpaceEnabled** | **string** | 1 | [optional] [default to null]
+**CEEEvDiskSpaceText** | **string** | 8 | [optional] [default to null]
+**CEEEvLicenceRenevalText** | **string** | 7 | [optional] [default to null]
+**CEEEvLicenceRenevalEnabled** | **string** | 1 | [optional] [default to null]
+**CEEEvDiskSpacePercent** | **string** | 9 | [optional] [default to null]
+**CEEEvTestTempFile** | **string** |  | [optional] [default to null]
+**CEEEvTestProcessID** | **string** |  | [optional] [default to null]
+**CEEEvTestEndTime** | **string** |  | [optional] [default to null]
+**CEEEvTestStatus** | **string** |  | [optional] [default to null]
+
+[[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)
+

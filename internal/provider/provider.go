@@ -2,6 +2,8 @@ package provider
 
 import (
 	"context"
+	"crypto/tls"
+	"net/http"
 	"os"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -23,9 +25,10 @@ func New() func() provider.Provider {
 type edgeadcProvider struct{}
 
 type edgeadcProviderModel struct {
-	Endpoint types.String `tfsdk:"endpoint"`
-	Username types.String `tfsdk:"username"`
-	Password types.String `tfsdk:"password"`
+	Endpoint             types.String `tfsdk:"endpoint"`
+	Username             types.String `tfsdk:"username"`
+	Password             types.String `tfsdk:"password"`
+	SkipCertVerification types.Bool   `tfsdk:"skip_cert_verification"`
 }
 
 func (p *edgeadcProvider) Schema(ctx context.Context, req provider.SchemaRequest, resp *provider.SchemaResponse) {
@@ -41,6 +44,10 @@ func (p *edgeadcProvider) Schema(ctx context.Context, req provider.SchemaRequest
 			},
 			"password": schema.StringAttribute{
 				MarkdownDescription: "API Password",
+				Optional:            true,
+			},
+			"skip_cert_verification": schema.BoolAttribute{
+				MarkdownDescription: "Whether to skip TLS verification",
 				Optional:            true,
 			},
 		},
@@ -139,6 +146,14 @@ func (p *edgeadcProvider) Configure(ctx context.Context, req provider.ConfigureR
 
 	// Create a new client using the configuration values
 	client := NewAPI(endpoint, username, password, "")
+
+	// Disable TLS verification if the configuration value is set
+	if !config.SkipCertVerification.IsNull() {
+		tr := &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: config.SkipCertVerification.ValueBool()},
+		}
+		client.client = &http.Client{Transport: tr}
+	}
 
 	// Make the client available during DataSource and Resource
 	// type Configure methods.

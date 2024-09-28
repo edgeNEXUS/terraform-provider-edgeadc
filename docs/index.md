@@ -19,4 +19,5 @@ description: |-
 
 - `endpoint` (String) EdgeADC Endpoint
 - `password` (String) API Password
+- `skip_cert_verification` (Boolean) Whether to skip TLS verification
 - `username` (String) API Username

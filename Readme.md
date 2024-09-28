@@ -42,6 +42,18 @@ provider "edgeadc" {
 }
 ```
 
+Note - `skip_cert_verification` can be set to `true` to ignore certificate verification.
+* This is especially useful for initial bootstrapping as it will allow you to use the provider with the out-of-the-box self-signed certificate without having to import the self-signed certificate into your trust store.
+```hcl
+provider "edgeadc" {
+  username = "admin"
+  password = "jetnexus"
+  endpoint = "https://192.168.2.101:443"
+  skip_cert_verification = true
+}
+```
+
+
 ## Examples
 - [See examples directory](/examples/main.tf)
 

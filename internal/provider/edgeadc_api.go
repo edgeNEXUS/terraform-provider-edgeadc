@@ -16,6 +16,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 const (
@@ -27,12 +29,13 @@ type HTTPClient interface {
 }
 
 type API struct {
-	client     HTTPClient
-	baseURL    string
-	hostPort   string
-	password   string
-	username   string
-	cookieGuid string
+	client         HTTPClient
+	baseURL        string
+	hostPort       string
+	password       string
+	username       string
+	cookieGuid     string
+	loggingContext context.Context
 }
 
 type LoginResponse struct {
@@ -67,20 +70,25 @@ func (api *API) getCookie() (string, error) {
 	endpointURL := fmt.Sprintf("%s:%s/POST/32", api.baseURL, api.hostPort)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 	defer cancel()
+	// Log URL (exclude body as it contains sensitive information)
+	tflog.Debug(api.loggingContext, endpointURL)
 	postBody, _ := json.Marshal(map[string]string{
 		api.username: api.password,
 	})
 	getCookieRequest, err := http.NewRequestWithContext(ctx, "POST", endpointURL, bytes.NewBuffer(postBody))
 	if err != nil {
+		tflog.Error(api.loggingContext, err.Error())
 		return "", fmt.Errorf("error: creating cookie request: %w", err)
 	}
 	response, responseErr := api.client.Do(getCookieRequest)
 	if responseErr != nil {
+		tflog.Error(api.loggingContext, responseErr.Error())
 		return "", fmt.Errorf("error: creating cookie response: %w", responseErr)
 	}
 	loginResponse := &LoginResponse{}
 	loginResponseErr := ReadLoginResponse(response, loginResponse)
 	if loginResponseErr != nil {
+		tflog.Error(api.loggingContext, loginResponseErr.Error())
 		return "", fmt.Errorf("error: processing Login response: %w", loginResponseErr)
 	}
 	return loginResponse.GUID, nil
@@ -93,6 +101,7 @@ func (api *API) doAuthenticatedRequest(r *http.Request) (*http.Response, error) 
 	if api.cookieGuid == "" {
 		cookieGuid, errGuid := api.getCookie()
 		if errGuid != nil {
+			tflog.Debug(api.loggingContext, errGuid.Error())
 			return nil, errGuid
 		}
 		api.cookieGuid = cookieGuid
@@ -113,6 +122,8 @@ func (api *API) GetEdgeADCObject(path string) (string, error) {
 	endpointURL := fmt.Sprintf("%s:%s%s", api.baseURL, api.hostPort, path)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 	defer cancel()
+	// Log URL and body
+	tflog.Debug(api.loggingContext, endpointURL)
 	req, errGet := http.NewRequestWithContext(ctx, "GET", endpointURL, http.NoBody)
 	if errGet != nil {
 		return "", fmt.Errorf("error: creating EdgeADC request: %w", errGet)
@@ -136,6 +147,7 @@ func (api *API) GetEdgeADCObject(path string) (string, error) {
 
 	b, err := io.ReadAll(resp.Body)
 	if err != nil {
+		tflog.Error(api.loggingContext, err.Error())
 		log.Fatalln(err)
 	}
 
@@ -144,6 +156,7 @@ func (api *API) GetEdgeADCObject(path string) (string, error) {
 	edgeResponse := EdgeResponse{}
 	_ = json.Unmarshal(b, &edgeResponse)
 	if edgeResponse.StatusImage == "jetError" {
+		tflog.Error(api.loggingContext, string(b))
 		return "", fmt.Errorf("EdgeADC: %s", edgeResponse.StatusText)
 	}
 
@@ -163,6 +176,9 @@ func (api *API) PostEdgeADCApiWithHeaders(path string, body []byte, headers map[
 	endpointURL := fmt.Sprintf("%s:%s%s", api.baseURL, api.hostPort, path)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 	defer cancel()
+	// Log URL and body
+	tflog.Debug(api.loggingContext, endpointURL)
+	tflog.Debug(api.loggingContext, string(body))
 	getRequest, err := http.NewRequestWithContext(ctx, "POST", endpointURL, bytes.NewBuffer(body))
 	if err != nil {
 		return "", fmt.Errorf("error: creating EdgeADC request: %w", err)
@@ -173,14 +189,16 @@ func (api *API) PostEdgeADCApiWithHeaders(path string, body []byte, headers map[
 		getRequest.Header.Set(k, v)
 	}
 
-	resp, err := api.doAuthenticatedRequest(getRequest) //nolint:bodyclose // linters bug
-	if err != nil {
-		return "", fmt.Errorf(DoRequestError, err)
+	resp, errDo := api.doAuthenticatedRequest(getRequest) //nolint:bodyclose // linters bug
+	if errDo != nil {
+		tflog.Error(api.loggingContext, errDo.Error())
+		return "", fmt.Errorf(DoRequestError, errDo)
 	}
 
-	b, err := io.ReadAll(resp.Body)
-	if err != nil {
-		log.Fatalln(err)
+	b, errRead := io.ReadAll(resp.Body)
+	if errRead != nil {
+		tflog.Error(api.loggingContext, errRead.Error())
+		log.Fatalln(errRead)
 	}
 
 	// EdgeADC Returns success code and status but
@@ -188,6 +206,7 @@ func (api *API) PostEdgeADCApiWithHeaders(path string, body []byte, headers map[
 	edgeResponse := EdgeResponse{}
 	_ = json.Unmarshal(b, &edgeResponse)
 	if edgeResponse.StatusImage == "jetError" {
+		tflog.Error(api.loggingContext, string(b))
 		return "", fmt.Errorf("EdgeADC: %s - %s", path, edgeResponse.StatusText)
 	}
 

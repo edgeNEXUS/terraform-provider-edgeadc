@@ -155,6 +155,9 @@ func (p *edgeadcProvider) Configure(ctx context.Context, req provider.ConfigureR
 		client.client = &http.Client{Transport: tr}
 	}
 
+	// Set the context for logging purposes
+	client.loggingContext = ctx
+
 	// Make the client available during DataSource and Resource
 	// type Configure methods.
 	resp.DataSourceData = client

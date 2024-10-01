@@ -10,20 +10,20 @@ package swagger
 
 type UpdateRealRequestInner struct {
 	// test
-	Password string `json:"Password,omitempty"`
+	Password string `json:"Password"`
 	// 23
-	Threshold string `json:"Threshold,omitempty"`
+	Threshold string `json:"Threshold"`
 	// test
-	Username string `json:"Username,omitempty"`
-	Content string `json:"content,omitempty"`
+	Username string `json:"Username"`
+	Content  string `json:"content"`
 	// Check home page for 200 OK
-	Description string `json:"description,omitempty"`
+	Description string `json:"description"`
 	// 1
-	Id string `json:"id,omitempty"`
+	Id string `json:"id"`
 	// 200OK
-	Name string `json:"name,omitempty"`
+	Name string `json:"name"`
 	// Check200
-	Type_ string `json:"type,omitempty"`
+	Type_ string `json:"type"`
 	// /test/ab.aspx
-	Url string `json:"url,omitempty"`
+	Url string `json:"url"`
 }

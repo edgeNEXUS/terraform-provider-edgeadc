@@ -3,8 +3,11 @@
 
 Terraform provider for EdgeADC Device - [EdgeNexus](https://www.edgenexus.io/)
 
+This provider is published on the terraform registry - [edgeNEXUS/edgeadc](https://registry.terraform.io/providers/edgeNEXUS/edgeadc/latest)
+
 ## Documentation
-- [Terraform Resource Documentation](/docs/index.md)
+- [Provider Resource Documentation](/docs/index.md)
+- [Troubleshooting Guide](/docs/troubleshooting/Readme.md)
 
 ## Requirements
 
@@ -60,6 +63,8 @@ provider "edgeadc" {
 # Resource Support
 The following resources are currently supported:
 - `ip_services` - [Documentation](/docs/resources/ip_services.md)
+- `custom_monitor` - [Documentation](/docs/resources/custom_monitor.md)
+- `realserver_monitor` - [Documentation](/docs/resources/realserver_monitor.md)
 - `servers` - [Documentation](/docs/resources/server.md)
 - `ssl_certificates` - [Documentation](/docs/resources/ssl_certificates.md)
 - `users` - [Documentation](/docs/resources/users.md)

@@ -105,8 +105,9 @@ func IpServiceResourceSchema(ctx context.Context) schema.Schema {
 				Computed: true,
 			},
 			"server_monitoring": schema.StringAttribute{
-				Optional: true,
-				Computed: true,
+				Optional:    true,
+				Computed:    true,
+				Description: "Comma-separated list of custom monitor names",
 			},
 			"load_balancing_policy": schema.StringAttribute{
 				Optional: true,

@@ -44,7 +44,7 @@ description: |-
 - `out_count` (String)
 - `primary_checked` (String)
 - `security_log` (String)
-- `server_monitoring` (String)
+- `server_monitoring` (String) Comma-separated list of custom monitor names
 - `service_name` (String)
 - `service_type` (String)
 - `sni_default_certificate_name` (String)

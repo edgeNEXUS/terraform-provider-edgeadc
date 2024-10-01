@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -22,8 +23,7 @@ func NewIpServicesResource() resource.Resource {
 }
 
 type ipServicesResource struct {
-	client  *API
-	mutexKV *MutexKV
+	client *API
 }
 
 func (r *ipServicesResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -42,11 +42,6 @@ func (r *ipServicesResource) Configure(_ context.Context, req resource.Configure
 
 		return
 	}
-	mutexKV, ok := req.ProviderData.(*MutexKV)
-	if mutexKV == nil {
-		mutexKV = NewMutexKV()
-	}
-	r.mutexKV = mutexKV
 	r.client = client
 }
 
@@ -71,12 +66,13 @@ func (r *ipServicesResource) Create(ctx context.Context, req resource.CreateRequ
 	// Create API call logic
 	ipAddr := data.IpAddr.ValueString()
 	port := data.Port.ValueString()
+
 	model := ToIpService(data)
 
-	// mutex to allow only a single IP service to be created at once
-	lockName := fmt.Sprintf("ip_services:%s:%s", ipAddr, port)
-	r.mutexKV.Lock(lockName)
-	defer r.mutexKV.Unlock(lockName)
+	// mutex to allow only a single resource to be managed at once
+	lockName := fmt.Sprintf("ip_services")
+	r.client.mutexKV.Lock(lockName)
+	defer r.client.mutexKV.Unlock(lockName)
 
 	// Retry the creation of the IP Service
 	// The API has timeouts and other issues creating IP Services
@@ -181,6 +177,11 @@ func (r *ipServicesResource) Update(ctx context.Context, req resource.UpdateRequ
 		return
 	}
 
+	// mutex to allow only a single resource to be managed at once
+	lockName := fmt.Sprintf("ip_services")
+	r.client.mutexKV.Lock(lockName)
+	defer r.client.mutexKV.Unlock(lockName)
+
 	// Update API call logic
 	ipAddr := data.IpAddr.ValueString()
 	port := data.Port.ValueString()
@@ -235,8 +236,10 @@ func (r *ipServicesResource) Delete(ctx context.Context, req resource.DeleteRequ
 		return
 	}
 
-	r.mutexKV.Lock("ip_services:delete")
-	defer r.mutexKV.Unlock("ip_services:delete")
+	// mutex to allow only a single resource to be managed at once
+	lockName := fmt.Sprintf("ip_services")
+	r.client.mutexKV.Lock(lockName)
+	defer r.client.mutexKV.Unlock(lockName)
 
 	// Delete API call logic
 	err := DeleteIPService(r.client, data.IpAddr.ValueString(), data.Port.ValueString())
@@ -264,9 +267,9 @@ func (r *ipServicesResource) ImportState(ctx context.Context, req resource.Impor
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
-func ReadIPServices(client *API) (out swagger.IpServices, err error) {
-	model := swagger.IpServices{}
-	jsonResponse, err := client.GetEdgeADCObject("/GET/9")
+func ReadIPServicesComboBox(client *API) (swagger.IpServicescombo, error) {
+	model := swagger.IpServicescombo{}
+	jsonResponse, err := client.GetEdgeADCObject("/GET/29")
 	if err != nil {
 		return model, err
 	}
@@ -280,13 +283,63 @@ func ReadIPServices(client *API) (out swagger.IpServices, err error) {
 	return model, nil
 }
 
+func GetMonitorPolicyComboByValueFromComboOptions(comboOptions swagger.IpServicescomboServiceTypeComboOptions, name string) (swagger.TypeComboOne, error) {
+	for _, option := range comboOptions.Option {
+		if option.Value == name {
+			return option, nil
+		}
+	}
+	return swagger.TypeComboOne{}, errors.New(fmt.Sprintf("custom monitor not found with name: %s", name))
+}
+
+func GetMonitorPolicyComboByIdFromComboOptions(comboOptions swagger.IpServicescomboServiceTypeComboOptions, id string) (swagger.TypeComboOne, error) {
+	for _, option := range comboOptions.Option {
+		if option.Id == id {
+			return option, nil
+		}
+	}
+	return swagger.TypeComboOne{}, errors.New(fmt.Sprintf("custom monitor not found with id: %s", id))
+}
+
+func ReadIPServices(client *API) (swagger.IpServices, error) {
+	model := swagger.IpServices{}
+	jsonResponse, err := client.GetEdgeADCObject("/GET/9")
+	if err != nil {
+		return model, err
+	}
+	// If there are no ip_services this API call returns an empty string
+	// instead of a success response with an empty array
+	// ToDo: Remove this once the IP call returns an empty array
+	jsonErr := json.Unmarshal([]byte(jsonResponse), &model)
+	if jsonErr != nil {
+		return model, nil
+	}
+
+	return model, nil
+}
+
 func ReadIPService(client *API, ipAddr string, port string) (swagger.IpService, error) {
 	ipServices, err := ReadIPServices(client)
 	if err != nil {
 		return swagger.IpService{}, err
 	}
 	// ToDo: Use GetIpServiceById once the id is no longer mutable
-	return GetIpServiceByAddressAndPort(ipServices, ipAddr, port)
+	model, getErr := GetIpServiceByAddressAndPort(ipServices, ipAddr, port)
+	if getErr != nil {
+		return swagger.IpService{}, getErr
+	}
+
+	// Convert server monitoring from lookup values to friendly names
+	// Need to use lookup table for combo options
+	ipServicesCombo, comboErr := ReadIPServicesComboBox(client)
+	if comboErr != nil {
+		return model, comboErr
+	}
+	comboOptions := *ipServicesCombo.MonitorPolicyCombo.Options
+	serverMonitoring, _ := ConvertComboOptionsToNames(comboOptions, model.ServerMonitoring)
+
+	model.ServerMonitoring = serverMonitoring
+	return model, nil
 }
 
 func CreateIpServiceTemplate(client *API) error {
@@ -323,7 +376,7 @@ func CreateIpServiceWithRetries(client *API, model swagger.IpService) error {
 	if err != nil {
 		return errors.New("unable to Create IP Services")
 	}
-	time.Sleep(1 * time.Second)
+	time.Sleep(100 * time.Millisecond)
 
 	// After an IP Service is created, the Basic and Advanced tabs need to be updated
 	_, createdErr := ReadIPService(client, model.IpAddr, model.Port)
@@ -378,6 +431,16 @@ func UpdateIpService(client *API, initial swagger.IpService) (swagger.IpService,
 }
 
 func UpdateIpServiceBasicTab(client *API, model swagger.UpdateBasicTab) error {
+	// Convert server monitoring from friendly names to lookup values
+	ipServicesCombo, comboErr := ReadIPServicesComboBox(client)
+	if comboErr != nil {
+		return comboErr
+	}
+	comboOptions := *ipServicesCombo.MonitorPolicyCombo.Options
+	serverMonitoring, _ := ConvertComboOptionsToIds(comboOptions, model.ServerMonitoring)
+	model.ServerMonitoring = serverMonitoring
+
+	// Update
 	jsonBytes, _ := json.Marshal(model)
 	_, err := client.PostEdgeADCApi("/POST/9?iAction=2&iType=3", jsonBytes)
 	return err
@@ -400,8 +463,6 @@ func UpdateIpServiceAdvancedTab(client *API, model swagger.UpdateAdvanceTab) err
 }
 
 func DeleteIPService(client *API, ipAddr string, port string) error {
-	// Sleep 1 second to ensure any other operation has completed
-	time.Sleep(1 * time.Second)
 	// Always GET before POST to avoid "Another user has made changes" error
 	ipService, getErr := ReadIPService(client, ipAddr, port)
 	if getErr != nil {
@@ -647,6 +708,38 @@ func ToIpService(data resource_ip_services.IpServicesResourceModel) swagger.IpSe
 		SecurityLog:               data.SecurityLog.ValueString(),
 	}
 	return swaggerModel
+}
+
+func ConvertComboOptionsToNames(comboOptions swagger.IpServicescomboServiceTypeComboOptions, ids string) (string, error) {
+	if ids == "" {
+		return "", nil
+	}
+	comboIds := strings.Split(ids, ",")
+	var results []string
+	for _, id := range comboIds {
+		combo, err := GetMonitorPolicyComboByIdFromComboOptions(comboOptions, id)
+		if err != nil {
+			return strings.Join(results, ","), err
+		}
+		results = append(results, combo.Value)
+	}
+	return strings.Join(results, ","), nil
+}
+
+func ConvertComboOptionsToIds(comboOptions swagger.IpServicescomboServiceTypeComboOptions, names string) (string, error) {
+	if names == "" {
+		return "", nil
+	}
+	comboNames := strings.Split(names, ",")
+	var results []string
+	for _, name := range comboNames {
+		combo, err := GetMonitorPolicyComboByValueFromComboOptions(comboOptions, name)
+		if err != nil {
+			return strings.Join(results, ","), err
+		}
+		results = append(results, combo.Id)
+	}
+	return strings.Join(results, ","), nil
 }
 
 func FromIpService(swaggerModel swagger.IpService) resource_ip_services.IpServicesResourceModel {

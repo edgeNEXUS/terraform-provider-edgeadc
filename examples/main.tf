@@ -43,8 +43,26 @@ resource "edgeadc_ssl_certificates" "example_certificate" {
     password = "123456"
 }
 
+# Create a Real Server Monitor
+resource "edgeadc_realserver_monitor" "test_realserver_monitor1" {
+    name =  "NewMonitorName1"
+	description = "NewMonitor Description"
+	type = "Check200"
+	url = "/page-location"
+	content = "200 OK"
+	username = ""
+	password = ""
+	threshold = "3"
+}
+
+# Upload a custom monitor perl script
+resource "edgeadc_custom_monitor" "example_custom_monitor" {
+    name = "Test Custom Monitor"
+    file_path = "c:\\temp\\custom-perl-test.pl"
+}
+
 # Create a second Virtual Service
-# With SSL and advanced settings
+# With SSL, Server Monitor and advanced settings
 resource "edgeadc_ip_services" "test_ip_service_2" {
     ip_addr = "192.168.1.102"
     subnet_mask = "255.255.255.255"
@@ -53,6 +71,8 @@ resource "edgeadc_ip_services" "test_ip_service_2" {
     primary_checked = "Active"
     service_type = "HTTP"
     port = "102"
+    # Basic settings
+    server_monitoring = edgeadc_realserver_monitor.test_realserver_monitor1.name
     # Advanced settings
     ssl_certificate = edgeadc_ssl_certificates.example_certificate.id
 }

@@ -36,6 +36,7 @@ type API struct {
 	username       string
 	cookieGuid     string
 	loggingContext context.Context
+	mutexKV        *MutexKV
 }
 
 type LoginResponse struct {
@@ -57,6 +58,10 @@ func NewAPI(baseURL, username, password, hostPort string) *API {
 		username:   username,
 		password:   password,
 		cookieGuid: "",
+		// Initialize logging context
+		loggingContext: context.Background(),
+		// Set a mutexKV to prevent concurrent requests which can be used globally
+		mutexKV: NewMutexKV(),
 	}
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12},
@@ -257,6 +262,46 @@ func (api *API) UploadFileEdgeADCApi(path string, params map[string]string, file
 		return "", err
 	}
 	headers := map[string]string{"Content-Type": writer.FormDataContentType()}
+	return api.PostEdgeADCApiWithHeaders(path, body.Bytes(), headers)
+}
+
+// UploadCustomMonitorFileEdgeADCApi uploads a file to the EdgeADC API
+func (api *API) UploadCustomMonitorFileEdgeADCApi(path string, params map[string]string, filePath string) (string, error) {
+	paramName := "UploadMointorupload"
+	file, err := os.Open(filePath)
+	if err != nil {
+		return "", err
+	}
+	defer func(file *os.File) {
+		err := file.Close()
+		if err != nil {
+			return
+		}
+	}(file)
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+
+	// Need to set a custom header otherwise would have used
+	// part, err := writer.CreateFormFile(paramName, filepath.Base(filePath))
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Disposition",
+		fmt.Sprintf(`form-data; name="%s"; filename="%s"`,
+			escapeQuotes(paramName), escapeQuotes(filepath.Base(filePath))))
+	h.Set("Content-Type", "application/octet-stream")
+	part, err := writer.CreatePart(h)
+	if err != nil {
+		return "", err
+	}
+	_, err = io.Copy(part, file)
+	for key, val := range params {
+		_ = writer.WriteField(key, val)
+	}
+	err = writer.Close()
+	if err != nil {
+		return "", err
+	}
+	headers := map[string]string{"Content-Type": writer.FormDataContentType()}
+	println(body.String())
 	return api.PostEdgeADCApiWithHeaders(path, body.Bytes(), headers)
 }
 

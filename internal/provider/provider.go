@@ -177,7 +177,9 @@ func (p *edgeadcProvider) Resources(ctx context.Context) []func() resource.Resou
 	return []func() resource.Resource{
 		NewUsersResource,
 		NewIpServicesResource,
+		NewRealserverMonitorResource,
 		NewServerResource,
 		NewSslCertificatesResource,
+		NewCustomMonitorResource,
 	}
 }

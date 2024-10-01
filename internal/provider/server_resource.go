@@ -70,6 +70,11 @@ func (r *serverResource) Create(ctx context.Context, req resource.CreateRequest,
 		return
 	}
 
+	// mutex to allow only a single resource to be managed at once
+	lockName := fmt.Sprintf("server")
+	r.client.mutexKV.Lock(lockName)
+	defer r.client.mutexKV.Unlock(lockName)
+
 	// Create API call logic
 	ipServiceIpAddr, ipServicePort, _ := GetAddressAndPortFromId(ipServiceId)
 	createErr := CreateServerTemplate(r.client, ipServiceIpAddr, ipServicePort)
@@ -148,6 +153,11 @@ func (r *serverResource) Update(ctx context.Context, req resource.UpdateRequest,
 
 	ipServiceId := data.IpService.ValueString()
 
+	// mutex to allow only a single resource to be managed at once
+	lockName := fmt.Sprintf("server")
+	r.client.mutexKV.Lock(lockName)
+	defer r.client.mutexKV.Unlock(lockName)
+
 	// Update API call logic
 	model := r.ToCServerId(data)
 	ipServiceIpAddr, ipServicePort, _ := GetAddressAndPortFromId(data.IpService.ValueString())
@@ -185,6 +195,12 @@ func (r *serverResource) Delete(ctx context.Context, req resource.DeleteRequest,
 		return
 	}
 
+	// mutex to allow only a single resource to be managed at once
+	lockName := fmt.Sprintf("server")
+	r.client.mutexKV.Lock(lockName)
+	defer r.client.mutexKV.Unlock(lockName)
+
+	// Delete API call logic
 	ipServiceIpAddr, ipServicePort, _ := GetAddressAndPortFromId(data.IpService.ValueString())
 	model := r.ToCServerId(data)
 	err := DeleteServer(r.client, model, ipServiceIpAddr, ipServicePort)

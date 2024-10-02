@@ -103,6 +103,13 @@ func (r *serverResource) Create(ctx context.Context, req resource.CreateRequest,
 		)
 		return
 	}
+
+	// When an ip_service is created it creates a blank server
+	// That blank server cannot be deleted until a real server is added
+	// Which is why it is run at the end of Create server
+	ipServices, _ := ReadIPServices(r.client)
+	DeleteEmptyServer(r.client, ipServices, ipService.InterfaceID, ipService.ChannelID)
+
 	data = r.FromCServerId(cServerId, ipService.InterfaceID, ipService.ChannelID)
 	data.IpService = types.StringValue(ipServiceId)
 
@@ -318,16 +325,30 @@ func DeleteServer(client *API, model swagger.CServerId, ipServiceIpAddr string, 
 	if readErr != nil {
 		return readErr
 	}
-	// Update details
-	// Note this is subject to race condition/concurrent operation scenario
-	// As the ID could change between when we read the data and when we create the server
-	toDelete := swagger.RemoveServer{}
-	toDelete.EditedInterface = ipService.InterfaceID
-	toDelete.EditedChannel = ipService.ChannelID
-	toDelete.CId = cServer.CId
-	jsonBytes, _ := json.Marshal(toDelete)
-	_, err := client.PostEdgeADCApi("/POST/9?iAction=3&iType=5", jsonBytes)
+	_, err := DeleteServerById(client, cServer.CId, ipService.InterfaceID, ipService.ChannelID)
 	return err
+}
+
+func DeleteServerById(client *API, cid string, interfaceId string, channelId string) (swagger.IpServices, error) {
+	removeServer := swagger.RemoveServer{
+		CId:             cid,
+		EditedChannel:   channelId,
+		EditedInterface: interfaceId,
+	}
+	jsonBytes, _ := json.Marshal(removeServer)
+	jsonResponse, err := client.PostEdgeADCApi("/POST/9?iAction=3&iType=5", jsonBytes)
+	model := swagger.IpServices{}
+	if err != nil {
+		return model, err
+	}
+	// If there are no ip_services this API call returns an empty string
+	// instead of a success response with an empty array
+	// ToDo: Remove this once the IP call returns an empty array
+	jsonErr := json.Unmarshal([]byte(jsonResponse), &model)
+	if jsonErr != nil {
+		return model, nil
+	}
+	return model, nil
 }
 
 // GetEmptyServer finds a server created by the template
@@ -342,23 +363,27 @@ func GetEmptyServer(client *API, ipService swagger.IpService) (swagger.CServerId
 	return swagger.CServerId{}, nil
 }
 
-// DeleteEmptyServer deletes a server which has an empty IP address
-// It will only delete one server at a time
+// DeleteEmptyServer removes the first server with a blank IP address
 // (When you create a new ip_service it creates a blank server with the same port)
-func DeleteEmptyServer(client *API, ipServices swagger.IpServices, port string) error {
+func DeleteEmptyServer(client *API, ipServices swagger.IpServices, interfaceId string, channelId string) {
 	for _, svc := range ipServices.Data.Dataset.IpService {
 		for _, ipService := range svc {
-			for _, server := range ipService.ContentServer.CServerId {
-				if server.CSIPAddr == "" && server.CSPort == port {
-					deleteErr := DeleteServer(client, server, ipService.IpAddr, ipService.Port)
-					if deleteErr != nil {
-						return deleteErr
+			if ipService.InterfaceID == interfaceId && ipService.ChannelID == channelId {
+				for _, server := range ipService.ContentServer.CServerId {
+					if server.CSIPAddr == "" {
+						_, err := DeleteServerById(client, server.CId, ipService.InterfaceID, ipService.ChannelID)
+						if err != nil {
+							return
+						}
+						// Recurse to delete any other empty servers
+						// Although there should only ever be one
+						//DeleteEmptyServersRecursively(client, ipServices, interfaceId, channelId)
 					}
 				}
 			}
 		}
 	}
-	return nil
+	return
 }
 
 // GetServerIds gets a list of all the IDs of the servers

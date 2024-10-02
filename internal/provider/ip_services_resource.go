@@ -149,7 +149,35 @@ func (r *ipServicesResource) Read(ctx context.Context, req resource.ReadRequest,
 	// Read API call logic
 	ipAddr := data.IpAddr.ValueString()
 	port := data.Port.ValueString()
-	ipService, err := ReadIPService(r.client, ipAddr, port)
+
+	// The API call will return all IP Service data in one response
+	// Since this is the read phase and API client pointer is shared across all ip_services
+	// We can retrieve the data once and reference it in the other resources
+	if r.client.cachedIpServices.Data == nil {
+		ipServices, ipServicesErr := ReadIPServices(r.client)
+		if ipServicesErr != nil {
+			resp.Diagnostics.AddError(
+				"Unable to Read IP Services",
+				ipServicesErr.Error(),
+			)
+			return
+		}
+		r.client.cachedIpServices = ipServices
+	}
+
+	if r.client.cachedIpServiceCombo.MonitorPolicyCombo == nil {
+		ipServicesCombo, comboErr := ReadIPServicesComboBox(r.client)
+		if comboErr != nil {
+			resp.Diagnostics.AddError(
+				"Unable to Read IP Services Combo",
+				comboErr.Error(),
+			)
+			return
+		}
+		r.client.cachedIpServiceCombo = ipServicesCombo
+	}
+
+	ipService, err := CachedReadIPService(r.client.cachedIpServices, r.client.cachedIpServiceCombo, ipAddr, port)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to Read IP Services",
@@ -299,6 +327,20 @@ func GetMonitorPolicyComboByIdFromComboOptions(comboOptions swagger.IpServicesco
 		}
 	}
 	return swagger.TypeComboOne{}, errors.New(fmt.Sprintf("custom monitor not found with id: %s", id))
+}
+
+func CachedReadIPService(ipServices swagger.IpServices, ipServicesCombo swagger.IpServicescombo, ipAddr string, port string) (swagger.IpService, error) {
+	// ToDo: Use GetIpServiceById once the id is no longer mutable
+	model, getErr := GetIpServiceByAddressAndPort(ipServices, ipAddr, port)
+	if getErr != nil {
+		return swagger.IpService{}, getErr
+	}
+
+	comboOptions := *ipServicesCombo.MonitorPolicyCombo.Options
+	serverMonitoring, _ := ConvertComboOptionsToNames(comboOptions, model.ServerMonitoring)
+
+	model.ServerMonitoring = serverMonitoring
+	return model, nil
 }
 
 func ReadIPServices(client *API) (swagger.IpServices, error) {

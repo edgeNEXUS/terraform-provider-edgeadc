@@ -127,12 +127,27 @@ func (r *serverResource) Read(ctx context.Context, req resource.ReadRequest, res
 		return
 	}
 
+	// The API call will return all IP Service data in one response
+	// Since this is the read phase and API client pointer is shared across all server resources
+	// We can retrieve the data once and reference it in the other resources
+	if r.client.cachedIpServices.Data == nil {
+		ipServices, ipServicesErr := ReadIPServices(r.client)
+		if ipServicesErr != nil {
+			resp.Diagnostics.AddError(
+				"Unable to Read Server",
+				ipServicesErr.Error(),
+			)
+			return
+		}
+		r.client.cachedIpServices = ipServices
+	}
+
 	ipServiceId := data.IpService.ValueString()
 
 	// Read API call logic
 	model := r.ToCServerId(data)
 	ipServiceIpAddr, ipServicePort, _ := GetAddressAndPortFromId(data.IpService.ValueString())
-	ipService, cServer, err := ReadServer(r.client, model.CSIPAddr, model.CSPort, ipServiceIpAddr, ipServicePort)
+	ipService, cServer, err := GetServerByAddressAndPortFromIpServices(r.client.cachedIpServices, ipServiceIpAddr, ipServicePort, model.CSIPAddr, model.CSPort)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to Read Server",

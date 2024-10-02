@@ -17,6 +17,8 @@ import (
 	"strings"
 	"time"
 
+	"terraform-provider-edgeadc/swagger"
+
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
@@ -37,6 +39,10 @@ type API struct {
 	cookieGuid     string
 	loggingContext context.Context
 	mutexKV        *MutexKV
+
+	// Cache for Read-Phase ONLY for performance
+	cachedIpServices     swagger.IpServices
+	cachedIpServiceCombo swagger.IpServicescombo
 }
 
 type LoginResponse struct {
@@ -62,6 +68,9 @@ func NewAPI(baseURL, username, password, hostPort string) *API {
 		loggingContext: context.Background(),
 		// Set a mutexKV to prevent concurrent requests which can be used globally
 		mutexKV: NewMutexKV(),
+		// Initialize a new cache for the API
+		cachedIpServices:     swagger.IpServices{},
+		cachedIpServiceCombo: swagger.IpServicescombo{},
 	}
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12},

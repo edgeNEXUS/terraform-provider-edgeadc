@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -12,6 +13,10 @@ import (
 
 	"terraform-provider-edgeadc/internal/provider/resource_server"
 	"terraform-provider-edgeadc/swagger"
+)
+
+const (
+	errServerNotFound = "server not found"
 )
 
 var _ resource.Resource = (*serverResource)(nil)
@@ -149,6 +154,12 @@ func (r *serverResource) Read(ctx context.Context, req resource.ReadRequest, res
 	ipServiceIpAddr, ipServicePort, _ := GetAddressAndPortFromId(data.IpService.ValueString())
 	ipService, cServer, err := GetServerByAddressAndPortFromIpServices(r.client.cachedIpServices, ipServiceIpAddr, ipServicePort, model.CSIPAddr, model.CSPort)
 	if err != nil {
+		// If the resource is not found, remove it from the state.
+		// Terraform will take this feedback and create the resource on the next "apply" operation
+		if strings.HasPrefix(err.Error(), errServerNotFound) {
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		resp.Diagnostics.AddError(
 			"Unable to Read Server",
 			err.Error(),
@@ -421,7 +432,7 @@ func GetServerIds(ipServices swagger.IpServices, ipServiceIpAddr string, ipServi
 
 func GetServerByAddressAndPortFromIpServices(ipServices swagger.IpServices, ipServiceIpAddr string, ipServicePort string, serverIpAddr string, serverPort string) (swagger.IpService, swagger.CServerId, error) {
 	if ipServices.Data.Dataset.IpService == nil {
-		return swagger.IpService{}, swagger.CServerId{}, errors.New(fmt.Sprintf("server not found with %s:%s for ip_service %s:%s", serverIpAddr, serverPort, ipServiceIpAddr, ipServicePort))
+		return swagger.IpService{}, swagger.CServerId{}, errors.New(fmt.Sprintf("%s with %s:%s for ip_service %s:%s", errServerNotFound, serverIpAddr, serverPort, ipServiceIpAddr, ipServicePort))
 	}
 	for _, svc := range ipServices.Data.Dataset.IpService {
 		for _, ipService := range svc {
@@ -434,7 +445,7 @@ func GetServerByAddressAndPortFromIpServices(ipServices swagger.IpServices, ipSe
 			}
 		}
 	}
-	return swagger.IpService{}, swagger.CServerId{}, errors.New(fmt.Sprintf("server not found with %s:%s for ip_service %s:%s", serverIpAddr, serverPort, ipServiceIpAddr, ipServicePort))
+	return swagger.IpService{}, swagger.CServerId{}, errors.New(fmt.Sprintf("%s with %s:%s for ip_service %s:%s", errServerNotFound, serverPort, ipServiceIpAddr, ipServicePort))
 }
 
 func GetServerByAddressAndPortFromIpService(ipService swagger.IpService, ipServiceIpAddr string, ipServicePort string, serverIpAddr string, serverPort string) (swagger.CServerId, error) {

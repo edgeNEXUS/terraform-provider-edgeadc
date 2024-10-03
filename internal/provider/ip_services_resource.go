@@ -16,6 +16,10 @@ import (
 	"terraform-provider-edgeadc/swagger"
 )
 
+const (
+	errServiceNotFound = "ip service not found"
+)
+
 var _ resource.Resource = (*ipServicesResource)(nil)
 
 func NewIpServicesResource() resource.Resource {
@@ -179,6 +183,12 @@ func (r *ipServicesResource) Read(ctx context.Context, req resource.ReadRequest,
 
 	ipService, err := CachedReadIPService(r.client.cachedIpServices, r.client.cachedIpServiceCombo, ipAddr, port)
 	if err != nil {
+		// If the resource is not found, remove it from the state.
+		// Terraform will take this feedback and create the resource on the next "apply" operation
+		if strings.HasPrefix(err.Error(), errServiceNotFound) {
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		resp.Diagnostics.AddError(
 			"Unable to Read IP Services",
 			err.Error(),
@@ -553,7 +563,7 @@ func GetIpServiceByAddressAndPort(ipServices swagger.IpServices, ipAddr string, 
 			}
 		}
 	}
-	return swagger.IpService{}, errors.New(fmt.Sprintf("ip service not found with address: %s and port: %s", ipAddr, port))
+	return swagger.IpService{}, errors.New(fmt.Sprintf("%s with address: %s and port: %s", errServiceNotFound, ipAddr, port))
 }
 
 // GetEmptyIpService finds an ip service created by the template

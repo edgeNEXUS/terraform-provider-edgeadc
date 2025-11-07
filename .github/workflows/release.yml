@@ -8,10 +8,11 @@ on:
     inputs:
       tag:
         description: 'Tag name to release (e.g., v0.1.8)'
-        required: false
+        required: true
 
 jobs:
   build:
+    if: ${{ startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -51,14 +52,17 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: 0
+          INPUT_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || '' }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
+          set -euo pipefail
           APP=terraform-provider-edgeadc
           OUT=dist
           mkdir -p "$OUT"
           go mod download
           go build -ldflags "-s -w" -o "$OUT/${APP}${{ matrix.ext }}" .
           cd "$OUT"
-          VER=${GITHUB_REF_NAME}
+          VER="${INPUT_TAG:-$REF_NAME}"
           PKG="${APP}_${VER}_${{ matrix.goos }}_${{ matrix.goarch }}"
           if [ "${{ matrix.pack }}" = "zip" ]; then
             zip -q "${PKG}.zip" "${APP}${{ matrix.ext }}"
@@ -77,6 +81,7 @@ jobs:
           path: dist/*
 
   release:
+    if: ${{ startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     needs: build
     permissions:

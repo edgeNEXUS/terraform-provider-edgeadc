@@ -1,3 +1,83 @@
+name: Release Provider Binaries
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            ext: ""
+            pack: tar.gz
+          - goos: linux
+            goarch: arm64
+            ext: ""
+            pack: tar.gz
+          - goos: darwin
+            goarch: amd64
+            ext: ""
+            pack: tar.gz
+          - goos: darwin
+            goarch: arm64
+            ext: ""
+            pack: tar.gz
+          - goos: windows
+            goarch: amd64
+            ext: ".exe"
+            pack: zip
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.x'
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          APP=terraform-provider-edgeadc
+          OUT=dist
+          mkdir -p "$OUT"
+          go mod download
+          go build -ldflags "-s -w" -o "$OUT/${APP}${{ matrix.ext }}" .
+          cd "$OUT"
+          VER=${GITHUB_REF_NAME}
+          PKG="${APP}_${VER}_${{ matrix.goos }}_${{ matrix.goarch }}"
+          if [ "${{ matrix.pack }}" = "zip" ]; then
+            zip -q "${PKG}.zip" "${APP}${{ matrix.ext }}"
+            rm -f "${APP}${{ matrix.ext }}"
+          else
+            tar -czf "${PKG}.tar.gz" "${APP}${{ matrix.ext }}"
+            rm -f "${APP}${{ matrix.ext }}"
+          fi
+
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS
+
+      - name: Upload Release Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 # Terraform Provider release workflow.
 name: Release
 

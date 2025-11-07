@@ -32,4 +32,6 @@ type UpdateServer struct {
 	ContentServerGroupName string `json:"contentServerGroupName"`
 	// Server Group
 	ServerId string `json:"ServerId"`
+	// Monitor Endpoint for Real Server
+	CSMonitorEndPoint string `json:"CSMonitorEndPoint,omitempty"`
 }

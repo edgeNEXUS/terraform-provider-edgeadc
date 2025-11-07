@@ -24,6 +24,7 @@ description: |-
 ### Optional
 
 - `cs_activity` (String)
+- `cs_monitor_end_point` (String) Optional monitor endpoint for the real server (e.g. 10.1.1.1)
 - `cs_notes` (String)
 - `server_id` (String)
 - `server_key` (String)

@@ -71,6 +71,11 @@ func ServerResourceSchema(ctx context.Context) schema.Schema {
 				Optional: true,
 				Computed: true,
 			},
+			"cs_monitor_end_point": schema.StringAttribute{
+				Optional: true,
+				Computed: false,
+				Description: "Optional monitor endpoint for the real server (e.g. 10.1.1.1)",
+			},
 			"server_id": schema.StringAttribute{
 				Optional: true,
 				Computed: true,
@@ -94,6 +99,7 @@ type ServerResourceModel struct {
 	CSIPAddr     types.String `tfsdk:"cs_ip_addr"`
 	CSPort       types.String `tfsdk:"cs_port"`
 	CSNotes      types.String `tfsdk:"cs_notes"`
+	CSMonitorEndPoint types.String `tfsdk:"cs_monitor_end_point"`
 	ServerId     types.String `tfsdk:"server_id"`
 	WeightFactor types.String `tfsdk:"weight_factor"`
 }

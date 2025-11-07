@@ -115,8 +115,12 @@ func (r *serverResource) Create(ctx context.Context, req resource.CreateRequest,
 	ipServices, _ := ReadIPServices(r.client)
 	DeleteEmptyServer(r.client, ipServices, ipService.InterfaceID, ipService.ChannelID)
 
-	data = r.FromCServerId(cServerId, ipService.InterfaceID, ipService.ChannelID)
-	data.IpService = types.StringValue(ipServiceId)
+    data = r.FromCServerId(cServerId, ipService.InterfaceID, ipService.ChannelID)
+    data.IpService = types.StringValue(ipServiceId)
+    // preserve monitor endpoint across update
+    data.CSMonitorEndPoint = types.StringValue(model.CSMonitorEndPoint)
+    // preserve monitor endpoint value set by user
+    data.CSMonitorEndPoint = types.StringValue(server.CSMonitorEndPoint)
 
 	// Save data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -167,8 +171,11 @@ func (r *serverResource) Read(ctx context.Context, req resource.ReadRequest, res
 		return
 	}
 
-	data = r.FromCServerId(cServer, ipService.InterfaceID, ipService.ChannelID)
-	data.IpService = types.StringValue(ipServiceId)
+    // keep previous monitor endpoint since API does not return it
+    prevMonitor := data.CSMonitorEndPoint
+    data = r.FromCServerId(cServer, ipService.InterfaceID, ipService.ChannelID)
+    data.IpService = types.StringValue(ipServiceId)
+    data.CSMonitorEndPoint = prevMonitor
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -314,8 +321,8 @@ func UpdateServerTemplate(client *API, updateServer swagger.UpdateServer, ipServ
 	updateServer.EditedChannel = ipService.ChannelID
 	updateServer.CId = emptyServer.CId
 
-	jsonBytes, _ := json.Marshal(updateServer)
-	_, postErr := client.PostEdgeADCApi("/POST/9?iAction=2&iType=2", jsonBytes)
+    jsonBytes, _ := json.Marshal(updateServer)
+    _, postErr := client.PostEdgeADCApi("/POST/9?iAction=2&iType=2", jsonBytes)
 	if postErr != nil {
 		return postErr
 	}
@@ -337,8 +344,8 @@ func UpdateServer(client *API, model swagger.CServerId, ipServiceIpAddr string, 
 	updateServer.CId = cServer.CId
 
 	// Update the server
-	jsonBytes, _ := json.Marshal(updateServer)
-	_, err := client.PostEdgeADCApi("/POST/9?iAction=2&iType=2", jsonBytes)
+    jsonBytes, _ := json.Marshal(updateServer)
+    _, err := client.PostEdgeADCApi("/POST/9?iAction=2&iType=2", jsonBytes)
 	if err != nil {
 		return err
 	}
@@ -487,17 +494,18 @@ func (r *serverResource) ToAddServer(data resource_server.ServerResourceModel) s
 }
 
 func (r *serverResource) ToUpdateServer(data resource_server.ServerResourceModel) swagger.UpdateServer {
-	return swagger.UpdateServer{
-		EditedInterface: data.InterfaceId.ValueString(),
-		EditedChannel:   data.ChannelId.ValueString(),
-		CSActivity:      data.CSActivity.ValueString(),
-		CSIPAddr:        data.CSIPAddr.ValueString(),
-		CSPort:          data.CSPort.ValueString(),
-		CSNotes:         data.CSNotes.ValueString(),
-		//		ServerId:               data.ServerId.ValueString(),
-		WeightFactor: data.WeightFactor.ValueString(),
-		//WeightFactorCalculated: data.WeightFactorCalculated.ValueString(),
-	}
+    return swagger.UpdateServer{
+        EditedInterface:    data.InterfaceId.ValueString(),
+        EditedChannel:      data.ChannelId.ValueString(),
+        CSActivity:         data.CSActivity.ValueString(),
+        CSIPAddr:           data.CSIPAddr.ValueString(),
+        CSPort:             data.CSPort.ValueString(),
+        CSNotes:            data.CSNotes.ValueString(),
+        //		ServerId:               data.ServerId.ValueString(),
+        WeightFactor:       data.WeightFactor.ValueString(),
+        CSMonitorEndPoint:  data.CSMonitorEndPoint.ValueString(),
+        //WeightFactorCalculated: data.WeightFactorCalculated.ValueString(),
+    }
 }
 
 func (r *serverResource) ToRemoveServer(data resource_server.ServerResourceModel) swagger.RemoveServer {

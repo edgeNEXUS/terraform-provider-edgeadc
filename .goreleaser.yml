@@ -20,6 +20,11 @@ builds:
     goarch:
       - amd64
       - arm64
+    ignore:
+      - goos: darwin
+        goarch: '386'
+      - goos: windows
+        goarch: arm64
     binary: '{{ .ProjectName }}_v{{ .Version }}'
 archives:
   - format: tar.gz
@@ -41,3 +46,5 @@ release:
   # draft: true
 changelog:
   disable: true
+signs:
+  - artifacts: none

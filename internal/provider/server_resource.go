@@ -117,9 +117,7 @@ func (r *serverResource) Create(ctx context.Context, req resource.CreateRequest,
 
     data = r.FromCServerId(cServerId, ipService.InterfaceID, ipService.ChannelID)
     data.IpService = types.StringValue(ipServiceId)
-    // preserve monitor endpoint across update
-    data.CSMonitorEndPoint = types.StringValue(model.CSMonitorEndPoint)
-    // preserve monitor endpoint value set by user
+    // preserve monitor endpoint value set by user during create
     data.CSMonitorEndPoint = types.StringValue(server.CSMonitorEndPoint)
 
 	// Save data into Terraform state
@@ -218,8 +216,11 @@ func (r *serverResource) Update(ctx context.Context, req resource.UpdateRequest,
 		)
 		return
 	}
-	data = r.FromCServerId(cServerId, ipService.InterfaceID, ipService.ChannelID)
-	data.IpService = types.StringValue(ipServiceId)
+    // keep previous monitor endpoint from plan across update
+    prevMonitor := data.CSMonitorEndPoint
+    data = r.FromCServerId(cServerId, ipService.InterfaceID, ipService.ChannelID)
+    data.IpService = types.StringValue(ipServiceId)
+    data.CSMonitorEndPoint = prevMonitor
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)

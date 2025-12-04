@@ -77,5 +77,5 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GPG_FINGERPRINT: ${{ env.FINGERPRINT || steps.import_gpg.outputs.fingerprint || secrets.GPG_FINGERPRINT }}
+          # Don't set GPG_FINGERPRINT - let GoReleaser use the default key from gpg.conf
 

@@ -51,8 +51,6 @@ signs:
     args:
       - "--batch"
       - "--pinentry-mode=loopback"
-      - "-u"
-      - "${.Env.GPG_FINGERPRINT}"
       - "--armor"
       - "--detach-sign"
       - "${artifact}"

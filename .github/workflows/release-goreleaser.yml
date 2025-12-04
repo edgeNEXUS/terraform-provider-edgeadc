@@ -31,26 +31,18 @@ jobs:
           passphrase: ${{ secrets.PASSPHRASE }}
           fingerprint: ${{ secrets.GPG_FINGERPRINT }}
 
-      - name: Verify GPG key
+      - name: Verify and trust GPG key
         run: |
           gpg --list-secret-keys --keyid-format LONG
-          echo "Expected fingerprint: ${{ secrets.GPG_FINGERPRINT }}"
           FINGERPRINT="${{ steps.import_gpg.outputs.fingerprint }}"
+          echo "Expected fingerprint: ${{ secrets.GPG_FINGERPRINT }}"
           echo "Imported fingerprint: $FINGERPRINT"
           # Trust the GPG key (ultimate trust)
           if [ -n "$FINGERPRINT" ]; then
             echo -e "5\ny\n" | gpg --batch --command-fd 0 --edit-key "$FINGERPRINT" trust || true
+            # Set as default key
+            gpg --batch --default-key "$FINGERPRINT" --list-keys || true
           fi
-
-      - name: Set GPG fingerprint
-        id: set_fingerprint
-        run: |
-          FINGERPRINT="${{ steps.import_gpg.outputs.fingerprint }}"
-          if [ -z "$FINGERPRINT" ]; then
-            FINGERPRINT="${{ secrets.GPG_FINGERPRINT }}"
-          fi
-          echo "fingerprint=$FINGERPRINT" >> $GITHUB_OUTPUT
-          echo "Using fingerprint: $FINGERPRINT"
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
@@ -60,5 +52,5 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GPG_FINGERPRINT: ${{ steps.set_fingerprint.outputs.fingerprint }}
+          GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}
 

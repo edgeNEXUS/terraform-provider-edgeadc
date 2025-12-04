@@ -49,25 +49,38 @@ jobs:
             exit 1
           fi
           
+          # Export public key to ensure it's in the keyring
+          echo "Exporting public key..."
+          gpg --armor --export "$USE_FINGERPRINT" | gpg --import || true
+          
           # Trust the GPG key (ultimate trust)
+          echo "Trusting key..."
           echo -e "5\ny\n" | gpg --batch --command-fd 0 --edit-key "$USE_FINGERPRINT" trust || true
           
           # Set as default key in GPG config
-          echo "Setting as default key..."
+          echo "Setting as default key in gpg.conf..."
           mkdir -p ~/.gnupg
           echo "default-key $USE_FINGERPRINT" >> ~/.gnupg/gpg.conf
+          cat ~/.gnupg/gpg.conf | grep default-key || echo "WARNING: default-key not found in config"
           
-          # Verify key is available and can sign
-          echo "Testing key availability..."
-          gpg --list-keys "$USE_FINGERPRINT" || echo "WARNING: Key not found in public keyring"
+          # Verify key is available
+          echo "Verifying key availability..."
+          gpg --list-keys "$USE_FINGERPRINT" || (echo "ERROR: Key not found!" && exit 1)
           
-          # Test signing a dummy file
-          echo "Testing GPG signing..."
-          echo "test" > /tmp/test.txt
-          gpg --batch --pinentry-mode=loopback --armor --detach-sign /tmp/test.txt && echo "✓ Signing test successful" || echo "✗ Signing test failed"
-          ls -la /tmp/test.txt* || true
+          # Test signing exactly as GoReleaser would
+          echo "Testing GPG signing (GoReleaser style)..."
+          echo "test content" > /tmp/test_checksum.txt
+          gpg --batch --pinentry-mode=loopback --armor --detach-sign /tmp/test_checksum.txt
+          if [ -f /tmp/test_checksum.txt.asc ]; then
+            echo "✓ Signing test successful - signature file created"
+            cat /tmp/test_checksum.txt.asc | head -5
+          else
+            echo "✗ Signing test failed - no signature file"
+            exit 1
+          fi
           
           echo "FINGERPRINT=$USE_FINGERPRINT" >> $GITHUB_ENV
+          echo "✓ GPG key setup complete"
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6

@@ -40,8 +40,8 @@ jobs:
           # Trust the GPG key (ultimate trust)
           if [ -n "$FINGERPRINT" ]; then
             echo -e "5\ny\n" | gpg --batch --command-fd 0 --edit-key "$FINGERPRINT" trust || true
-            # Set as default key
-            gpg --batch --default-key "$FINGERPRINT" --list-keys || true
+            # Export public key to verify it's available
+            gpg --armor --export "$FINGERPRINT" > /dev/null && echo "✓ Key export successful"
           fi
 
       - name: Run GoReleaser

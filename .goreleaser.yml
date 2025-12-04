@@ -46,13 +46,14 @@ release:
   # draft: true
 changelog:
   disable: true
-signs:
-  - artifacts: checksum
-    args:
-      - "--batch"
-      - "--pinentry-mode=loopback"
-      - "--armor"
-      - "--detach-sign"
-      - "${artifact}"
-    signature: "${artifact}.sig"
-    id: default
+# Temporarily disable signing to test if GoReleaser works
+# signs:
+#   - artifacts: checksum
+#     args:
+#       - "--batch"
+#       - "--pinentry-mode=loopback"
+#       - "--armor"
+#       - "--detach-sign"
+#       - "${artifact}"
+#     signature: "${artifact}.sig"
+#     id: default

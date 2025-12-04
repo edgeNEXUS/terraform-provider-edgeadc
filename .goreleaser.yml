@@ -51,9 +51,9 @@ signs:
     args:
       - "--batch"
       - "--pinentry-mode=loopback"
-      - "--armor"
       - "--detach-sign"
       - "${artifact}"
     signature: "${artifact}.sig"
     id: default
     # GoReleaser will use GPG_FINGERPRINT env var or default key from gpg.conf
+    # Note: Removed --armor flag to create .sig files (not .asc)

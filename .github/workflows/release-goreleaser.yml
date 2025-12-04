@@ -28,7 +28,7 @@ jobs:
         id: import_gpg
         with:
           gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
-          passphrase: ${{ secrets.PASSPHRASE }}
+          passphrase: ${{ secrets.PASSPHRASE || '' }}
           fingerprint: ${{ secrets.GPG_FINGERPRINT }}
 
       - name: Verify and trust GPG key

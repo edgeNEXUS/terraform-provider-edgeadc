@@ -33,16 +33,29 @@ jobs:
 
       - name: Verify and trust GPG key
         run: |
+          echo "=== GPG Key Verification ==="
           gpg --list-secret-keys --keyid-format LONG
           FINGERPRINT="${{ steps.import_gpg.outputs.fingerprint }}"
-          echo "Expected fingerprint: ${{ secrets.GPG_FINGERPRINT }}"
+          SECRET_FINGERPRINT="${{ secrets.GPG_FINGERPRINT }}"
+          echo "Expected fingerprint: $SECRET_FINGERPRINT"
           echo "Imported fingerprint: $FINGERPRINT"
-          # Trust the GPG key (ultimate trust)
-          if [ -n "$FINGERPRINT" ]; then
-            echo -e "5\ny\n" | gpg --batch --command-fd 0 --edit-key "$FINGERPRINT" trust || true
-            # Export public key to verify it's available
-            gpg --armor --export "$FINGERPRINT" > /dev/null && echo "✓ Key export successful"
+          
+          # Use imported fingerprint or fall back to secret
+          USE_FINGERPRINT="${FINGERPRINT:-$SECRET_FINGERPRINT}"
+          echo "Using fingerprint: $USE_FINGERPRINT"
+          
+          if [ -z "$USE_FINGERPRINT" ]; then
+            echo "ERROR: No fingerprint available!"
+            exit 1
           fi
+          
+          # Trust the GPG key (ultimate trust)
+          echo -e "5\ny\n" | gpg --batch --command-fd 0 --edit-key "$USE_FINGERPRINT" trust || true
+          
+          # Verify key is available and can sign
+          echo "Testing key availability..."
+          gpg --list-keys "$USE_FINGERPRINT" || echo "WARNING: Key not found in public keyring"
+          echo "FINGERPRINT=$USE_FINGERPRINT" >> $GITHUB_ENV
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
@@ -52,5 +65,5 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}
+          GPG_FINGERPRINT: ${{ env.FINGERPRINT || steps.import_gpg.outputs.fingerprint || secrets.GPG_FINGERPRINT }}
 

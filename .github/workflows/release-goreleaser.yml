@@ -52,6 +52,11 @@ jobs:
           # Trust the GPG key (ultimate trust)
           echo -e "5\ny\n" | gpg --batch --command-fd 0 --edit-key "$USE_FINGERPRINT" trust || true
           
+          # Set as default key in GPG config
+          echo "Setting as default key..."
+          mkdir -p ~/.gnupg
+          echo "default-key $USE_FINGERPRINT" >> ~/.gnupg/gpg.conf
+          
           # Verify key is available and can sign
           echo "Testing key availability..."
           gpg --list-keys "$USE_FINGERPRINT" || echo "WARNING: Key not found in public keyring"
@@ -59,7 +64,7 @@ jobs:
           # Test signing a dummy file
           echo "Testing GPG signing..."
           echo "test" > /tmp/test.txt
-          gpg --batch --pinentry-mode=loopback --armor --detach-sign --default-key "$USE_FINGERPRINT" /tmp/test.txt && echo "✓ Signing test successful" || echo "✗ Signing test failed"
+          gpg --batch --pinentry-mode=loopback --armor --detach-sign /tmp/test.txt && echo "✓ Signing test successful" || echo "✗ Signing test failed"
           ls -la /tmp/test.txt* || true
           
           echo "FINGERPRINT=$USE_FINGERPRINT" >> $GITHUB_ENV

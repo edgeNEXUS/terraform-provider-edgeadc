@@ -56,3 +56,4 @@ signs:
       - "${artifact}"
     signature: "${artifact}.sig"
     id: default
+    # GoReleaser will use GPG_FINGERPRINT env var or default key from gpg.conf

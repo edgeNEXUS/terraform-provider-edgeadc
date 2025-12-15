@@ -115,10 +115,11 @@ func (r *serverResource) Create(ctx context.Context, req resource.CreateRequest,
 	ipServices, _ := ReadIPServices(r.client)
 	DeleteEmptyServer(r.client, ipServices, ipService.InterfaceID, ipService.ChannelID)
 
+    // preserve monitor endpoint value from plan during create
+    prevMonitor := data.CSMonitorEndPoint
     data = r.FromCServerId(cServerId, ipService.InterfaceID, ipService.ChannelID)
     data.IpService = types.StringValue(ipServiceId)
-    // preserve monitor endpoint value set by user during create
-    data.CSMonitorEndPoint = types.StringValue(server.CSMonitorEndPoint)
+    data.CSMonitorEndPoint = prevMonitor
 
 	// Save data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)

@@ -1,11 +1,11 @@
 module terraform-provider-edgeadc
 
-go 1.22.6
+go 1.24.0
 
 require (
 	github.com/hashicorp/terraform-plugin-framework v1.12.0
 	github.com/hashicorp/terraform-plugin-log v0.9.0
-	golang.org/x/oauth2 v0.23.0
+	golang.org/x/oauth2 v0.34.0
 )
 
 require (

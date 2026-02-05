@@ -22,6 +22,8 @@ type UpdateRealRequestInner struct {
 	Id string `json:"id"`
 	// 200OK
 	Name string `json:"name"`
+	// auto, secured, unsecured
+	Ssl string `json:"ssl"`
 	// Check200
 	Type_ string `json:"type"`
 	// /test/ab.aspx

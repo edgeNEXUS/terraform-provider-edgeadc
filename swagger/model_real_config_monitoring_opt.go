@@ -17,6 +17,8 @@ type RealConfigMonitoringOpt struct {
 	Description string `json:"description,omitempty"`
 	// Check200
 	Type_ string `json:"type,omitempty"`
+	// auto, secured, unsecured
+	Ssl string `json:"ssl,omitempty"`
 	// /
 	Url string `json:"url,omitempty"`
 	Content string `json:"content,omitempty"`

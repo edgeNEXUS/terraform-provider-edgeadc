@@ -34,6 +34,11 @@ func RealserverMonitorResourceSchema(ctx context.Context) schema.Schema {
 				Description:         "Check200",
 				MarkdownDescription: "0",
 			},
+			"ssl": schema.StringAttribute{
+				Optional:            true,
+				Description:         "SSL/TLS setting for the monitor. Valid values: auto, secured, unsecured",
+				MarkdownDescription: "SSL/TLS setting for the monitor. Valid values: `auto`, `secured`, `unsecured`",
+			},
 			"url": schema.StringAttribute{
 				Required:            true,
 				Description:         "/",
@@ -68,6 +73,7 @@ type RealserverMonitorModel struct {
 	Name        types.String `tfsdk:"name"`
 	Description types.String `tfsdk:"description"`
 	Type        types.String `tfsdk:"type"`
+	Ssl         types.String `tfsdk:"ssl"`
 	Url         types.String `tfsdk:"url"`
 	Content     types.String `tfsdk:"content"`
 	Username    types.String `tfsdk:"username"`

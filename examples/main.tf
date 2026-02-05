@@ -48,6 +48,7 @@ resource "edgeadc_realserver_monitor" "test_realserver_monitor1" {
     name =  "NewMonitorName1"
 	description = "NewMonitor Description"
 	type = "Check200"
+	ssl = "auto"  # Valid values: auto, secured, unsecured
 	url = "/page-location"
 	content = "200 OK"
 	username = ""

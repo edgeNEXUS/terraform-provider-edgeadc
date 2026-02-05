@@ -26,6 +26,10 @@ description: |-
 - `url` (String) 0
 - `username` (String) 0
 
+### Optional
+
+- `ssl` (String) SSL/TLS setting for the monitor. Valid values: `auto`, `secured`, `unsecured`
+
 ### Read-Only
 
 - `id` (String) The id assigned to the realserver monitor

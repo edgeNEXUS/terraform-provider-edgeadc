@@ -1,10 +1,13 @@
 package provider
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"reflect"
 	"time"
+
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 func Retry(
@@ -35,10 +38,10 @@ func Retry(
 		if startBackoff < maxBackoff {
 			startBackoff *= 2
 		}
-		fmt.Printf(
-			"Retrying function call, attempt: %d, error: %v\n",
+		tflog.Debug(context.Background(), fmt.Sprintf(
+			"Retrying function call, attempt: %d, error: %v",
 			attempt+1, errVal,
-		)
+		))
 	}
 	return nil, fmt.Errorf("retry: max retries reached without success")
 }

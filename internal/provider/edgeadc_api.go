@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
@@ -175,7 +174,7 @@ func (api *API) getEdgeADCObjectInternal(path string, isRetry bool) (string, err
 	b, err := io.ReadAll(resp.Body)
 	if err != nil {
 		tflog.Error(api.loggingContext, err.Error())
-		log.Fatalln(err)
+		return "", fmt.Errorf("error reading response body: %w", err)
 	}
 
 	// EdgeADC Returns success code and status but
@@ -240,7 +239,7 @@ func (api *API) postEdgeADCApiWithHeadersInternal(path string, body []byte, head
 	b, errRead := io.ReadAll(resp.Body)
 	if errRead != nil {
 		tflog.Error(api.loggingContext, errRead.Error())
-		log.Fatalln(errRead)
+		return "", fmt.Errorf("error reading response body: %w", errRead)
 	}
 
 	// EdgeADC Returns success code and status but
@@ -346,7 +345,6 @@ func (api *API) UploadCustomMonitorFileEdgeADCApi(path string, params map[string
 		return "", err
 	}
 	headers := map[string]string{"Content-Type": writer.FormDataContentType()}
-	println(body.String())
 	return api.PostEdgeADCApiWithHeaders(path, body.Bytes(), headers)
 }
 

@@ -46,6 +46,9 @@ func ServerResourceSchema(ctx context.Context) schema.Schema {
 			"server_key": schema.StringAttribute{
 				Optional: true,
 				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"c_id": schema.StringAttribute{
 				Optional: false,
@@ -58,6 +61,9 @@ func ServerResourceSchema(ctx context.Context) schema.Schema {
 			"cs_activity": schema.StringAttribute{
 				Optional: true,
 				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"cs_ip_addr": schema.StringAttribute{
 				Required: true,
@@ -70,6 +76,9 @@ func ServerResourceSchema(ctx context.Context) schema.Schema {
 			"cs_notes": schema.StringAttribute{
 				Optional: true,
 				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"cs_monitor_end_point": schema.StringAttribute{
 				Optional: true,
@@ -79,10 +88,16 @@ func ServerResourceSchema(ctx context.Context) schema.Schema {
 			"server_id": schema.StringAttribute{
 				Optional: true,
 				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"weight_factor": schema.StringAttribute{
 				Optional: true,
 				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 		},
 	}

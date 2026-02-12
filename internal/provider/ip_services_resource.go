@@ -347,7 +347,12 @@ func CachedReadIPService(ipServices swagger.IpServices, ipServicesCombo swagger.
 	}
 
 	comboOptions := *ipServicesCombo.MonitorPolicyCombo.Options
-	serverMonitoring, _ := ConvertComboOptionsToNames(comboOptions, model.ServerMonitoring)
+	serverMonitoring, convertErr := ConvertComboOptionsToNames(comboOptions, model.ServerMonitoring)
+	if convertErr != nil {
+		// If conversion fails, keep the raw IDs to avoid losing data
+		// This can happen if the combo options are stale or incomplete
+		return model, nil
+	}
 
 	model.ServerMonitoring = serverMonitoring
 	return model, nil
@@ -388,7 +393,11 @@ func ReadIPService(client *API, ipAddr string, port string) (swagger.IpService, 
 		return model, comboErr
 	}
 	comboOptions := *ipServicesCombo.MonitorPolicyCombo.Options
-	serverMonitoring, _ := ConvertComboOptionsToNames(comboOptions, model.ServerMonitoring)
+	serverMonitoring, convertErr := ConvertComboOptionsToNames(comboOptions, model.ServerMonitoring)
+	if convertErr != nil {
+		// If conversion fails, keep the raw IDs to avoid losing data
+		return model, nil
+	}
 
 	model.ServerMonitoring = serverMonitoring
 	return model, nil
@@ -489,7 +498,10 @@ func UpdateIpServiceBasicTab(client *API, model swagger.UpdateBasicTab) error {
 		return comboErr
 	}
 	comboOptions := *ipServicesCombo.MonitorPolicyCombo.Options
-	serverMonitoring, _ := ConvertComboOptionsToIds(comboOptions, model.ServerMonitoring)
+	serverMonitoring, convertErr := ConvertComboOptionsToIds(comboOptions, model.ServerMonitoring)
+	if convertErr != nil {
+		return fmt.Errorf("unable to convert server monitoring names to IDs: %w", convertErr)
+	}
 	model.ServerMonitoring = serverMonitoring
 
 	// Update
@@ -640,47 +652,44 @@ func ToUpdateBasicTab(data resource_ip_services.IpServicesResourceModel) swagger
 }
 
 // MergeBasicTabs merges the basic tabs with the initial terraform value
-// It overlays values from terraform only when the value is known
-// ToDo: Is there a better way to handle this?
+// It overlays values from terraform only when the value is known and not null
 func MergeBasicTabs(input swagger.UpdateBasicTab, data resource_ip_services.IpServicesResourceModel) swagger.UpdateBasicTab {
-	assignIfKnown := func(target *string, source types.String) {
-		if !source.IsUnknown() {
+	assignIfSet := func(target *string, source types.String) {
+		if !source.IsUnknown() && !source.IsNull() {
 			*target = source.ValueString()
 		}
 	}
-	assignIfKnown(&input.ServerMonitoring, data.ServerMonitoring)
-	assignIfKnown(&input.Acceleration, data.Acceleration)
-	assignIfKnown(&input.LoadBalancingPolicy, data.LoadBalancingPolicy)
-	assignIfKnown(&input.SslCertificate, data.SslCertificate)
-	assignIfKnown(&input.SslClientCertificate, data.SslClientCertificate)
-	assignIfKnown(&input.CachingRule, data.CachingRule)
+	assignIfSet(&input.ServerMonitoring, data.ServerMonitoring)
+	assignIfSet(&input.Acceleration, data.Acceleration)
+	assignIfSet(&input.LoadBalancingPolicy, data.LoadBalancingPolicy)
+	assignIfSet(&input.SslCertificate, data.SslCertificate)
+	assignIfSet(&input.SslClientCertificate, data.SslClientCertificate)
+	assignIfSet(&input.CachingRule, data.CachingRule)
 
 	return input
 }
 
 // MergeAdvanceTabs merges the advance tabs with the initial terraform value
-// It overlays values from terraform only when the value is known
-// ToDo: Is there a better way to handle this?
+// It overlays values from terraform only when the value is known and not null
 func MergeAdvanceTabs(input swagger.UpdateAdvanceTab, data resource_ip_services.IpServicesResourceModel) swagger.UpdateAdvanceTab {
-	assignIfKnown := func(target *string, source types.String) {
-		if !source.IsUnknown() {
+	assignIfSet := func(target *string, source types.String) {
+		if !source.IsUnknown() && !source.IsNull() {
 			*target = source.ValueString()
 		}
 	}
-	assignIfKnown(&input.Connectivity, data.Connectivity)
-	assignIfKnown(&input.ConnectionTimeout, data.ConnectionTimeout)
-	assignIfKnown(&input.MonitoringInterval, data.MonitoringInterval)
-	assignIfKnown(&input.MonitoringTimeout, data.MonitoringTimeout)
-	assignIfKnown(&input.MaxConn, data.MaxConn)
-	assignIfKnown(&input.InCount, data.InCount)
-	assignIfKnown(&input.OutCount, data.OutCount)
-	assignIfKnown(&input.InCount, data.InCount)
-	assignIfKnown(&input.CipherName, data.CipherName)
-	assignIfKnown(&input.SecurityLog, data.SecurityLog)
-	assignIfKnown(&input.SslRenegotiation, data.SslRenegotiation)
-	assignIfKnown(&input.SNIDefaultCertificateName, data.SNIDefaultCertificateName)
-	assignIfKnown(&input.SslResumption, data.SslResumption)
-	assignIfKnown(&input.Offlinonfailure, data.Offlinonfailure)
+	assignIfSet(&input.Connectivity, data.Connectivity)
+	assignIfSet(&input.ConnectionTimeout, data.ConnectionTimeout)
+	assignIfSet(&input.MonitoringInterval, data.MonitoringInterval)
+	assignIfSet(&input.MonitoringTimeout, data.MonitoringTimeout)
+	assignIfSet(&input.MaxConn, data.MaxConn)
+	assignIfSet(&input.InCount, data.InCount)
+	assignIfSet(&input.OutCount, data.OutCount)
+	assignIfSet(&input.CipherName, data.CipherName)
+	assignIfSet(&input.SecurityLog, data.SecurityLog)
+	assignIfSet(&input.SslRenegotiation, data.SslRenegotiation)
+	assignIfSet(&input.SNIDefaultCertificateName, data.SNIDefaultCertificateName)
+	assignIfSet(&input.SslResumption, data.SslResumption)
+	assignIfSet(&input.Offlinonfailure, data.Offlinonfailure)
 
 	// ToDo: Enable once the API is updated
 	input.ServerProxyProtocolVariant = "none"

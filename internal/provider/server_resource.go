@@ -197,10 +197,10 @@ func (r *serverResource) Update(ctx context.Context, req resource.UpdateRequest,
 	r.client.mutexKV.Lock(lockName)
 	defer r.client.mutexKV.Unlock(lockName)
 
-	// Update API call logic
-	model := r.ToCServerId(data)
+	// Update API call logic - use ToUpdateServer to pass all field values
+	updateModel := r.ToUpdateServer(data)
 	ipServiceIpAddr, ipServicePort, _ := GetAddressAndPortFromId(data.IpService.ValueString())
-	err := UpdateServer(r.client, model, ipServiceIpAddr, ipServicePort)
+	err := UpdateServer(r.client, updateModel, ipServiceIpAddr, ipServicePort)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to Update Server",
@@ -209,19 +209,19 @@ func (r *serverResource) Update(ctx context.Context, req resource.UpdateRequest,
 		return
 	}
 
-	ipService, cServerId, finalErr := ReadServer(r.client, model.CSIPAddr, model.CSPort, ipServiceIpAddr, ipServicePort)
+	ipService, cServerId, finalErr := ReadServer(r.client, updateModel.CSIPAddr, updateModel.CSPort, ipServiceIpAddr, ipServicePort)
 	if finalErr != nil {
 		resp.Diagnostics.AddError(
-			"Unable to Read Created Server",
+			"Unable to Read Updated Server",
 			finalErr.Error(),
 		)
 		return
 	}
-    // keep previous monitor endpoint from plan across update
-    prevMonitor := data.CSMonitorEndPoint
-    data = r.FromCServerId(cServerId, ipService.InterfaceID, ipService.ChannelID)
-    data.IpService = types.StringValue(ipServiceId)
-    data.CSMonitorEndPoint = prevMonitor
+	// keep previous monitor endpoint from plan across update
+	prevMonitor := data.CSMonitorEndPoint
+	data = r.FromCServerId(cServerId, ipService.InterfaceID, ipService.ChannelID)
+	data.IpService = types.StringValue(ipServiceId)
+	data.CSMonitorEndPoint = prevMonitor
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -331,23 +331,22 @@ func UpdateServerTemplate(client *API, updateServer swagger.UpdateServer, ipServ
 	return nil
 }
 
-func UpdateServer(client *API, model swagger.CServerId, ipServiceIpAddr string, ipServicePort string) error {
-	// Refresh server details
-	ipService, cServer, readErr := ReadServer(client, model.CSIPAddr, model.CSPort, ipServiceIpAddr, ipServicePort)
+func UpdateServer(client *API, updateServer swagger.UpdateServer, ipServiceIpAddr string, ipServicePort string) error {
+	// Refresh server details to get the correct IDs
+	ipService, cServer, readErr := ReadServer(client, updateServer.CSIPAddr, updateServer.CSPort, ipServiceIpAddr, ipServicePort)
 	if readErr != nil {
 		return readErr
 	}
-	// Update details
+	// Set the correct IDs from the refreshed data
 	// Note this is subject to race condition/concurrent operation scenario
 	// As the ID could change between when we read the data and when we create the server
-	updateServer := swagger.UpdateServer{}
 	updateServer.EditedInterface = ipService.InterfaceID
 	updateServer.EditedChannel = ipService.ChannelID
 	updateServer.CId = cServer.CId
 
-	// Update the server
-    jsonBytes, _ := json.Marshal(updateServer)
-    _, err := client.PostEdgeADCApi("/POST/9?iAction=2&iType=2", jsonBytes)
+	// Update the server with all field values
+	jsonBytes, _ := json.Marshal(updateServer)
+	_, err := client.PostEdgeADCApi("/POST/9?iAction=2&iType=2", jsonBytes)
 	if err != nil {
 		return err
 	}

@@ -453,7 +453,7 @@ func GetServerByAddressAndPortFromIpServices(ipServices swagger.IpServices, ipSe
 			}
 		}
 	}
-	return swagger.IpService{}, swagger.CServerId{}, errors.New(fmt.Sprintf("%s with %s:%s for ip_service %s:%s", errServerNotFound, serverPort, ipServiceIpAddr, ipServicePort))
+	return swagger.IpService{}, swagger.CServerId{}, errors.New(fmt.Sprintf("%s with %s:%s for ip_service %s:%s", errServerNotFound, serverIpAddr, serverPort, ipServiceIpAddr, ipServicePort))
 }
 
 func GetServerByAddressAndPortFromIpService(ipService swagger.IpService, ipServiceIpAddr string, ipServicePort string, serverIpAddr string, serverPort string) (swagger.CServerId, error) {

@@ -63,6 +63,7 @@ func NewAPI(baseURL, username, password, hostPort string) *API {
 		baseURL:    baseURL,
 		username:   username,
 		password:   password,
+		hostPort:   hostPort,
 		cookieGuid: "",
 		// Initialize logging context
 		loggingContext: context.Background(),
@@ -80,8 +81,16 @@ func NewAPI(baseURL, username, password, hostPort string) *API {
 	return api
 }
 
+// buildURL constructs the full API URL, handling the case where hostPort may be empty
+func (api *API) buildURL(path string) string {
+	if api.hostPort == "" {
+		return fmt.Sprintf("%s%s", api.baseURL, path)
+	}
+	return fmt.Sprintf("%s:%s%s", api.baseURL, api.hostPort, path)
+}
+
 func (api *API) getCookie() (string, error) {
-	endpointURL := fmt.Sprintf("%s:%s/POST/32", api.baseURL, api.hostPort)
+	endpointURL := api.buildURL("/POST/32")
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 	defer cancel()
 	// Log URL (exclude body as it contains sensitive information)
@@ -133,7 +142,11 @@ func (api *API) doAuthenticatedRequest(r *http.Request) (*http.Response, error) 
 
 // GetEdgeADCObject performs a GET request to the EdgeADC API
 func (api *API) GetEdgeADCObject(path string) (string, error) {
-	endpointURL := fmt.Sprintf("%s:%s%s", api.baseURL, api.hostPort, path)
+	return api.getEdgeADCObjectInternal(path, false)
+}
+
+func (api *API) getEdgeADCObjectInternal(path string, isRetry bool) (string, error) {
+	endpointURL := api.buildURL(path)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 	defer cancel()
 	// Log URL and body
@@ -169,6 +182,17 @@ func (api *API) GetEdgeADCObject(path string) (string, error) {
 	// actually not successful
 	edgeResponse := EdgeResponse{}
 	_ = json.Unmarshal(b, &edgeResponse)
+
+	// Check for session expiration and re-authenticate once
+	if edgeResponse.LoginStatus == "Session Expired" && !isRetry {
+		tflog.Debug(api.loggingContext, fmt.Sprintf("[GET] Session expired for %s, clearing cookie and retrying...", path))
+		api.cookieGuid = ""
+		return api.getEdgeADCObjectInternal(path, true)
+	}
+	if edgeResponse.LoginStatus == "Session Expired" && isRetry {
+		tflog.Error(api.loggingContext, fmt.Sprintf("[GET] Session still expired after re-auth for %s", path))
+	}
+
 	if edgeResponse.StatusImage == "jetError" {
 		tflog.Error(api.loggingContext, string(b))
 		return "", fmt.Errorf("EdgeADC: %s", edgeResponse.StatusText)
@@ -187,7 +211,11 @@ func (api *API) PostEdgeADCApi(path string, body []byte) (string, error) {
 // PostEdgeADCApiWithHeaders performs a POST request to the EdgeADC API with headers
 // This is primarily used for POST requests that require a specific content type (e.g. multipart/form-data)
 func (api *API) PostEdgeADCApiWithHeaders(path string, body []byte, headers map[string]string) (string, error) {
-	endpointURL := fmt.Sprintf("%s:%s%s", api.baseURL, api.hostPort, path)
+	return api.postEdgeADCApiWithHeadersInternal(path, body, headers, false)
+}
+
+func (api *API) postEdgeADCApiWithHeadersInternal(path string, body []byte, headers map[string]string, isRetry bool) (string, error) {
+	endpointURL := api.buildURL(path)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 	defer cancel()
 	// Log URL and body
@@ -219,6 +247,14 @@ func (api *API) PostEdgeADCApiWithHeaders(path string, body []byte, headers map[
 	// actually not successful
 	edgeResponse := EdgeResponse{}
 	_ = json.Unmarshal(b, &edgeResponse)
+
+	// Check for session expiration and re-authenticate once
+	if edgeResponse.LoginStatus == "Session Expired" && !isRetry {
+		tflog.Debug(api.loggingContext, "Session expired on POST, re-authenticating...")
+		api.cookieGuid = ""
+		return api.postEdgeADCApiWithHeadersInternal(path, body, headers, true)
+	}
+
 	if edgeResponse.StatusImage == "jetError" {
 		tflog.Error(api.loggingContext, string(b))
 		return "", fmt.Errorf("EdgeADC: %s - %s", path, edgeResponse.StatusText)

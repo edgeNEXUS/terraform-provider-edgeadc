@@ -219,18 +219,14 @@ func UpdateRealserverMonitor(client *API, model swagger.RealConfigMonitoringOpt,
 	// ToDo: Update swagger
 	updateRealServerMonitor := []swagger.UpdateRealRequestInner{updateRealRequestInner}
 	jsonBytes, _ := json.Marshal(updateRealServerMonitor)
-	jsonResponse, err := client.PostEdgeADCApi("/POST/13?iAction=2&iType=1", jsonBytes)
+	_, err = client.PostEdgeADCApi("/POST/13?iAction=2&iType=1", jsonBytes)
 	if err != nil {
 		return swagger.RealConfigMonitoringOpt{}, err
 	}
-	configMonitoringData := swagger.ConfigMonitoring{}
-	jsonErr := json.Unmarshal([]byte(jsonResponse), &configMonitoringData)
-	if jsonErr != nil {
-		return swagger.RealConfigMonitoringOpt{}, jsonErr
-	}
 	time.Sleep(1 * time.Second)
-	realConfigMonitoringOpt := GetRealConfigMonitoringOptByName(configMonitoringData, model.Name)
-	return realConfigMonitoringOpt, nil
+	// Do a fresh GET read to get the updated monitor data
+	// The POST response may not include the full grid data
+	return ReadRealserverMonitor(client, model.Name)
 }
 
 func DeleteRealserverMonitor(client *API, name string) (err error) {
@@ -299,6 +295,12 @@ func (r *realserverMonitorResource) ToTerraformModel(realConfigMonitoringOpt swa
 }
 
 func GetRealConfigMonitoringOptByName(configMonitoringData swagger.ConfigMonitoring, name string) swagger.RealConfigMonitoringOpt {
+	if configMonitoringData.ConfigMonitoringGrid == nil {
+		return swagger.RealConfigMonitoringOpt{}
+	}
+	if configMonitoringData.ConfigMonitoringGrid.Dataset == nil {
+		return swagger.RealConfigMonitoringOpt{}
+	}
 	for _, row := range configMonitoringData.ConfigMonitoringGrid.Dataset.Row {
 		if row.Name == name {
 			return row

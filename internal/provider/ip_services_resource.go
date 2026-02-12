@@ -435,14 +435,14 @@ func UpdateIpServiceTemplate(client *API, toCopy swagger.CopyIp) error {
 func CreateIpServiceWithRetries(client *API, model swagger.IpService) error {
 	err := CreateIpService(client, model)
 	if err != nil {
-		return errors.New("unable to Create IP Services")
+		return fmt.Errorf("unable to Create IP Services: %w", err)
 	}
 	time.Sleep(100 * time.Millisecond)
 
 	// After an IP Service is created, the Basic and Advanced tabs need to be updated
 	_, createdErr := ReadIPService(client, model.IpAddr, model.Port)
 	if createdErr != nil {
-		return errors.New("unable to retrieve created IP Services")
+		return fmt.Errorf("unable to retrieve created IP Services: %w", createdErr)
 	}
 	return nil
 }
@@ -554,7 +554,7 @@ func HandleEmptyResponse(jsonResponse string) swagger.IpServices {
 // GetIpServiceIds gets a list of all the IDs of the ip services
 func GetIpServiceIds(ipServices swagger.IpServices) []string {
 	ids := make([]string, 0)
-	if ipServices.Data.Dataset.IpService == nil {
+	if ipServices.Data == nil || ipServices.Data.Dataset == nil || ipServices.Data.Dataset.IpService == nil {
 		return ids
 	}
 	for _, svc := range ipServices.Data.Dataset.IpService {
@@ -568,6 +568,9 @@ func GetIpServiceIds(ipServices swagger.IpServices) []string {
 // GetIpServiceByAddressAndPort gets the ip service by the ip address and port
 // ToDo: Use GetIpServiceById once the Ids are no longer mutable
 func GetIpServiceByAddressAndPort(ipServices swagger.IpServices, ipAddr string, port string) (swagger.IpService, error) {
+	if ipServices.Data == nil || ipServices.Data.Dataset == nil {
+		return swagger.IpService{}, errors.New("IP services data is nil")
+	}
 	for _, svc := range ipServices.Data.Dataset.IpService {
 		for _, ipService := range svc {
 			if ipService.IpAddr == ipAddr && ipService.Port == port {
@@ -580,6 +583,9 @@ func GetIpServiceByAddressAndPort(ipServices swagger.IpServices, ipAddr string, 
 
 // GetEmptyIpService finds an ip service created by the template
 func GetEmptyIpService(ipServices swagger.IpServices) (swagger.IpService, error) {
+	if ipServices.Data == nil || ipServices.Data.Dataset == nil {
+		return swagger.IpService{}, errors.New("IP services data is nil")
+	}
 	for _, svc := range ipServices.Data.Dataset.IpService {
 		for _, ipService := range svc {
 			if ipService.IpAddr == "" {
@@ -591,6 +597,9 @@ func GetEmptyIpService(ipServices swagger.IpServices) (swagger.IpService, error)
 }
 
 func GetIpServiceById(ipServices swagger.IpServices, id string) (swagger.IpService, error) {
+	if ipServices.Data == nil || ipServices.Data.Dataset == nil {
+		return swagger.IpService{}, errors.New("IP services data is nil")
+	}
 	for _, svc := range ipServices.Data.Dataset.IpService {
 		for _, ipService := range svc {
 			if ipService.SId == id {

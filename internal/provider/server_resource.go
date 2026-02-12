@@ -400,6 +400,9 @@ func GetEmptyServer(client *API, ipService swagger.IpService) (swagger.CServerId
 // DeleteEmptyServer removes the first server with a blank IP address
 // (When you create a new ip_service it creates a blank server with the same port)
 func DeleteEmptyServer(client *API, ipServices swagger.IpServices, interfaceId string, channelId string) {
+	if ipServices.Data == nil || ipServices.Data.Dataset == nil {
+		return
+	}
 	for _, svc := range ipServices.Data.Dataset.IpService {
 		for _, ipService := range svc {
 			if ipService.InterfaceID == interfaceId && ipService.ChannelID == channelId {
@@ -423,7 +426,7 @@ func DeleteEmptyServer(client *API, ipServices swagger.IpServices, interfaceId s
 // GetServerIds gets a list of all the IDs of the servers
 func GetServerIds(ipServices swagger.IpServices, ipServiceIpAddr string, ipServicePort string) []string {
 	ids := make([]string, 0)
-	if ipServices.Data.Dataset.IpService == nil {
+	if ipServices.Data == nil || ipServices.Data.Dataset == nil || ipServices.Data.Dataset.IpService == nil {
 		return ids
 	}
 	for _, svc := range ipServices.Data.Dataset.IpService {
@@ -439,7 +442,7 @@ func GetServerIds(ipServices swagger.IpServices, ipServiceIpAddr string, ipServi
 }
 
 func GetServerByAddressAndPortFromIpServices(ipServices swagger.IpServices, ipServiceIpAddr string, ipServicePort string, serverIpAddr string, serverPort string) (swagger.IpService, swagger.CServerId, error) {
-	if ipServices.Data.Dataset.IpService == nil {
+	if ipServices.Data == nil || ipServices.Data.Dataset == nil || ipServices.Data.Dataset.IpService == nil {
 		return swagger.IpService{}, swagger.CServerId{}, errors.New(fmt.Sprintf("%s with %s:%s for ip_service %s:%s", errServerNotFound, serverIpAddr, serverPort, ipServiceIpAddr, ipServicePort))
 	}
 	for _, svc := range ipServices.Data.Dataset.IpService {

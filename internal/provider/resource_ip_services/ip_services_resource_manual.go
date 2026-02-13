@@ -4,10 +4,33 @@ import (
 	"context"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
+
+// emptyStringToUnknown is a plan modifier that converts an empty string value
+// to unknown. This is used for fields where the API normalizes empty strings
+// to a server-chosen default (e.g. primary_checked "" -> "Active" or "Passive").
+// By marking the planned value as unknown, Terraform will accept whatever the
+// API returns instead of reporting an inconsistency.
+type emptyStringToUnknown struct{}
+
+func (m emptyStringToUnknown) Description(_ context.Context) string {
+	return "Treats empty string as unknown (server will assign a value)"
+}
+
+func (m emptyStringToUnknown) MarkdownDescription(_ context.Context) string {
+	return "Treats empty string as unknown (server will assign a value)"
+}
+
+func (m emptyStringToUnknown) PlanModifyString(_ context.Context, req planmodifier.StringRequest, resp *planmodifier.StringResponse) {
+	if req.PlanValue.IsNull() || req.PlanValue.IsUnknown() {
+		return
+	}
+	if req.PlanValue.ValueString() == "" {
+		resp.PlanValue = types.StringUnknown()
+	}
+}
 
 func IpServiceResourceSchema(ctx context.Context) schema.Schema {
 	return schema.Schema{
@@ -86,14 +109,16 @@ func IpServiceResourceSchema(ctx context.Context) schema.Schema {
 				},
 			},
 			// primary_checked controls whether the VIP is Active or Passive.
-			// The API normalizes empty strings to "Passive", so we default
-			// to "Passive" to avoid inconsistent state after apply.
+			// The API normalizes empty strings to either "Active" or "Passive"
+			// depending on context. The emptyStringToUnknown modifier ensures
+			// that if the user sets "" the plan treats it as unknown, so
+			// whatever the API returns will be accepted.
 			"primary_checked": schema.StringAttribute{
 				Optional: true,
 				Computed: true,
-				Default:  stringdefault.StaticString("Passive"),
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
+					emptyStringToUnknown{},
 				},
 			},
 			"service_type": schema.StringAttribute{

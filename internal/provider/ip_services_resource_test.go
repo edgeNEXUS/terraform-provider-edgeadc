@@ -1,8 +1,11 @@
 package provider
 
 import (
+	"context"
 	"testing"
 
+	schemalib "github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"terraform-provider-edgeadc/internal/provider/resource_ip_services"
@@ -465,6 +468,90 @@ func TestToCopyIp_IncludesPrimaryChecked(t *testing.T) {
 	result := ToCopyIp(data)
 	if result.PrimaryChecked != "Active" {
 		t.Errorf("ToCopyIp PrimaryChecked = %q, want %q", result.PrimaryChecked, "Active")
+	}
+}
+
+// TestPrimaryChecked_EmptyStringBecomesUnknown verifies that the
+// emptyStringToUnknown plan modifier on primary_checked converts ""
+// to unknown. This is critical because the ADC API normalizes "" to
+// either "Active" or "Passive" depending on context, and a static
+// plan value of "" would cause an inconsistency with whatever the
+// API returns.
+//
+// This test would have caught: "primary_checked: was cty.StringVal(""),
+// but now cty.StringVal("Active")"
+func TestPrimaryChecked_EmptyStringBecomesUnknown(t *testing.T) {
+	ctx := context.Background()
+	schema := resource_ip_services.IpServiceResourceSchema(ctx)
+
+	pcAttr, ok := schema.Attributes["primary_checked"]
+	if !ok {
+		t.Fatal("schema missing 'primary_checked' attribute")
+	}
+
+	strAttr, ok := pcAttr.(schemalib.StringAttribute)
+	if !ok {
+		t.Fatal("'primary_checked' is not a StringAttribute")
+	}
+
+	// Verify the field is Optional+Computed
+	if !strAttr.Optional || !strAttr.Computed {
+		t.Error("primary_checked should be Optional+Computed")
+	}
+
+	// Verify there's no static default (static defaults don't work because
+	// the API can return either "Active" or "Passive")
+	if strAttr.Default != nil {
+		t.Error("primary_checked should NOT have a static Default -- the API can return either 'Active' or 'Passive'")
+	}
+
+	// Verify that one of the plan modifiers handles empty strings
+	// by simulating a plan modify with ""
+	found := false
+	for _, pm := range strAttr.PlanModifiers {
+		req := planmodifier.StringRequest{
+			PlanValue: types.StringValue(""),
+		}
+		resp := &planmodifier.StringResponse{
+			PlanValue: types.StringValue(""),
+		}
+		pm.PlanModifyString(ctx, req, resp)
+		if resp.PlanValue.IsUnknown() {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("primary_checked must have a plan modifier that converts '' to unknown, " +
+			"otherwise the API returning 'Active' or 'Passive' will cause an inconsistency")
+	}
+}
+
+// TestPrimaryChecked_NonEmptyPassesThrough verifies that valid non-empty
+// values like "Active" and "Passive" pass through the plan modifier unchanged.
+func TestPrimaryChecked_NonEmptyPassesThrough(t *testing.T) {
+	ctx := context.Background()
+	schema := resource_ip_services.IpServiceResourceSchema(ctx)
+
+	pcAttr := schema.Attributes["primary_checked"]
+	strAttr := pcAttr.(schemalib.StringAttribute)
+
+	for _, val := range []string{"Active", "Passive"} {
+		req := planmodifier.StringRequest{
+			PlanValue: types.StringValue(val),
+		}
+		resp := &planmodifier.StringResponse{
+			PlanValue: types.StringValue(val),
+		}
+		for _, pm := range strAttr.PlanModifiers {
+			pm.PlanModifyString(ctx, req, resp)
+		}
+		if resp.PlanValue.IsUnknown() {
+			t.Errorf("plan modifier should not convert %q to unknown", val)
+		}
+		if resp.PlanValue.ValueString() != val {
+			t.Errorf("plan modifier changed %q to %q", val, resp.PlanValue.ValueString())
+		}
 	}
 }
 

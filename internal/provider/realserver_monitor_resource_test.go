@@ -1,10 +1,12 @@
 package provider
 
 import (
+	"context"
 	"testing"
 
 	"terraform-provider-edgeadc/swagger"
 
+	schemalib "github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"terraform-provider-edgeadc/internal/provider/resource_realserver_monitor"
@@ -203,6 +205,40 @@ func TestGetRealConfigMonitoringOptByName_NilDataset(t *testing.T) {
 	result := GetRealConfigMonitoringOptByName(data, "AnyName")
 	if result.Id != "" {
 		t.Errorf("expected empty struct for nil dataset, got Id=%q", result.Id)
+	}
+}
+
+// TestRealserverMonitorSchema_IdNotUseStateForUnknown verifies that the
+// realserver monitor schema does NOT use UseStateForUnknown on the id field.
+// The ADC renumbers monitor IDs when monitors are added/removed, so the ID
+// is not stable. Using UseStateForUnknown would cause the plan to preserve
+// the old ID, but the API returns a new one -> inconsistency.
+//
+// This test would have caught: "produced an unexpected new value: .id: was
+// cty.StringVal("6"), but now cty.StringVal("5")"
+func TestRealserverMonitorSchema_IdIsComputedWithoutUseStateForUnknown(t *testing.T) {
+	ctx := context.Background()
+	schema := resource_realserver_monitor.RealserverMonitorResourceSchema(ctx)
+
+	idAttr, ok := schema.Attributes["id"]
+	if !ok {
+		t.Fatal("schema missing 'id' attribute")
+	}
+
+	strAttr, ok := idAttr.(schemalib.StringAttribute)
+	if !ok {
+		t.Fatal("'id' attribute is not a StringAttribute")
+	}
+
+	if !strAttr.Computed {
+		t.Error("'id' should be Computed")
+	}
+
+	// Verify no plan modifiers are set (UseStateForUnknown would be one)
+	if len(strAttr.PlanModifiers) > 0 {
+		t.Errorf("'id' should have no plan modifiers (has %d). "+
+			"UseStateForUnknown must NOT be used because ADC renumbers monitor IDs",
+			len(strAttr.PlanModifiers))
 	}
 }
 

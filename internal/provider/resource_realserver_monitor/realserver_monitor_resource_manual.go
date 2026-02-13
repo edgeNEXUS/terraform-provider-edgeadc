@@ -3,7 +3,6 @@ package resource_realserver_monitor
 import (
 	"context"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -49,10 +48,11 @@ func RealserverMonitorResourceSchema(ctx context.Context) schema.Schema {
 			"id": schema.StringAttribute{
 				Required:    false,
 				Computed:    true,
-				Description: "The id assigned to the realserver monitor",
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
+				Description: "The internal ADC id assigned to the realserver monitor. This value may change when monitors are added or removed.",
+				// Note: UseStateForUnknown is deliberately NOT used here.
+				// The ADC renumbers monitor IDs when monitors are added or
+				// removed, so the ID can change between applies. Leaving it
+				// as unknown in the plan allows any returned value to be accepted.
 			},
 			"name": schema.StringAttribute{
 				Required:    true,

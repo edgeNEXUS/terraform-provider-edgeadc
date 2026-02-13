@@ -192,7 +192,19 @@ func DeleteCustomMonitor(client *API, name string) error {
 	// Always GET before POST to avoid "Another user has made changes" error
 	_, _ = client.GetEdgeADCObject("/GET/13")
 	_, err = client.PostEdgeADCApi("/POST/13?iAction=4", jsonBytes)
-	return err
+	if err != nil {
+		return err
+	}
+	// Do a fresh GET to verify the custom monitor was deleted
+	id, readErr := ReadCustomMonitor(client, name)
+	if readErr != nil {
+		// "custom monitor not found" means deletion succeeded
+		return nil
+	}
+	if id != "" {
+		return fmt.Errorf("custom monitor %s still exists after delete", name)
+	}
+	return nil
 }
 
 func GetCustomMonitorId(configMonitoringData swagger.ConfigMonitoring, name string) string {

@@ -70,6 +70,16 @@ func (r *sslCertificatesResource) Create(ctx context.Context, req resource.Creat
 		return
 	}
 
+	// Do a fresh GET to verify the certificate was created on the device
+	_, readErr := ReadCertificate(r.client, data.Id.ValueString())
+	if readErr != nil {
+		resp.Diagnostics.AddError(
+			"Unable to Verify Created Certificate",
+			readErr.Error(),
+		)
+		return
+	}
+
 	// Save data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -176,7 +186,16 @@ func DeleteCertificate(client *API, name string) error {
 	// Always GET before POST to avoid "Another user has made changes" error
 	_, _ = client.GetEdgeADCObject("/GET/19")
 	_, err = client.PostEdgeADCApi("/POST/19?iAction=2&iType=4", jsonBytes)
-	return err
+	if err != nil {
+		return err
+	}
+	// Do a fresh GET to verify the certificate was deleted
+	_, readErr := ReadCertificate(client, name)
+	if readErr != nil {
+		// "certificate not found" means deletion succeeded
+		return nil
+	}
+	return fmt.Errorf("certificate %s still exists after delete", name)
 }
 
 func CertificateExists(certificateData swagger.GetCertificate, certName string) bool {

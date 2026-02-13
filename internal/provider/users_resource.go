@@ -188,34 +188,28 @@ func CreateUser(client *API, model swagger.UsersAdd) (out swagger.UsersMembersOp
 	jsonBytes, _ := json.Marshal(model)
 	// Always GET before POST to avoid "Another user has made changes" error
 	_, _ = client.GetEdgeADCObject("/GET/33")
-	jsonResponse, err := client.PostEdgeADCApi("/POST/33?iAction=1&iType=1", jsonBytes)
+	_, err = client.PostEdgeADCApi("/POST/33?iAction=1&iType=1", jsonBytes)
 	if err != nil {
 		return out, err
 	}
-	usersData := swagger.UsersData{}
-	jsonErr := json.Unmarshal([]byte(jsonResponse), &usersData)
-	if jsonErr != nil {
-		return out, jsonErr
-	}
-	usersMemberOpt := GetUsersMembersOptByName(usersData, model.UserName)
-	return usersMemberOpt, nil
+	// Do a fresh GET to verify the change was applied and capture any
+	// server-side transformations or defaults.
+	readModel := swagger.UsersMembersOpt{UserName: model.UserName, NewPassword: model.NewPassword}
+	return ReadUser(client, readModel)
 }
 
 func UpdateUser(client *API, model swagger.UsersUpdate) (out swagger.UsersMembersOpt, err error) {
 	jsonBytes, _ := json.Marshal(model)
 	// Always GET before POST to avoid "Another user has made changes" error
 	_, _ = client.GetEdgeADCObject("/GET/33")
-	jsonResponse, err := client.PostEdgeADCApi("/POST/33?iAction=1&iType=2", jsonBytes)
+	_, err = client.PostEdgeADCApi("/POST/33?iAction=1&iType=2", jsonBytes)
 	if err != nil {
 		return out, err
 	}
-	usersData := swagger.UsersData{}
-	jsonErr := json.Unmarshal([]byte(jsonResponse), &usersData)
-	if jsonErr != nil {
-		return out, jsonErr
-	}
-	usersMemberOpt := GetUsersMembersOptByName(usersData, model.UserName)
-	return usersMemberOpt, nil
+	// Do a fresh GET to verify the change was applied and capture any
+	// server-side transformations or defaults.
+	readModel := swagger.UsersMembersOpt{UserName: model.UserName, NewPassword: model.NewPassword}
+	return ReadUser(client, readModel)
 }
 
 func DeleteUser(client *API, userName string) error {
@@ -224,7 +218,20 @@ func DeleteUser(client *API, userName string) error {
 	// Always GET before POST to avoid "Another user has made changes" error
 	_, _ = client.GetEdgeADCObject("/GET/33")
 	_, err = client.PostEdgeADCApi("/POST/33?iAction=1&iType=3", jsonBytes)
-	return err
+	if err != nil {
+		return err
+	}
+	// Do a fresh GET to verify the user was deleted
+	readModel := swagger.UsersMembersOpt{UserName: userName}
+	result, readErr := ReadUser(client, readModel)
+	if readErr != nil {
+		// Read error likely means the user is gone – treat as success
+		return nil
+	}
+	if result.UserName != "" {
+		return fmt.Errorf("user %s still exists after delete", userName)
+	}
+	return nil
 }
 
 func (r *usersResource) ToUsersMembersOpt(data resource_users.UsersModel) swagger.UsersMembersOpt {

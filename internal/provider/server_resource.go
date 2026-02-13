@@ -373,7 +373,22 @@ func DeleteServer(client *API, model swagger.CServerId, ipServiceIpAddr string, 
 		return readErr
 	}
 	_, err := DeleteServerById(client, cServer.CId, ipService.InterfaceID, ipService.ChannelID)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Do a fresh GET to verify the server was deleted
+	_, _, verifyErr := ReadServer(client, model.CSIPAddr, model.CSPort, ipServiceIpAddr, ipServicePort)
+	if verifyErr != nil {
+		// "server not found" means deletion succeeded
+		if strings.HasPrefix(verifyErr.Error(), errServerNotFound) ||
+			strings.HasPrefix(verifyErr.Error(), errServiceNotFound) {
+			return nil
+		}
+		// Some other read error – deletion may still have succeeded
+		return nil
+	}
+	return fmt.Errorf("%s with %s:%s still exists after delete", errServerNotFound, model.CSIPAddr, model.CSPort)
 }
 
 func DeleteServerById(client *API, cid string, interfaceId string, channelId string) (swagger.IpServices, error) {

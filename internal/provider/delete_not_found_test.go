@@ -154,41 +154,93 @@ func TestDeleteRealserverMonitor_NotFound_IntegrationStyle(t *testing.T) {
 	}
 }
 
+// statefulMockHTTPClient returns different responses for GET after a POST
+// has been received, simulating a resource being deleted.
+type statefulMockHTTPClient struct {
+	beforeDelete map[string]string
+	afterDelete  map[string]string
+	deleted      bool
+}
+
+func (m *statefulMockHTTPClient) Do(req *http.Request) (*http.Response, error) {
+	path := req.URL.Path
+	// Track when a POST (delete) happens
+	if req.Method == http.MethodPost {
+		m.deleted = true
+	}
+	responses := m.beforeDelete
+	if m.deleted {
+		responses = m.afterDelete
+	}
+	for suffix, body := range responses {
+		if len(path) >= len(suffix) && path[len(path)-len(suffix):] == suffix {
+			return &http.Response{
+				StatusCode: 200,
+				Body:       io.NopCloser(bytes.NewBufferString(body)),
+				Header:     make(http.Header),
+			}, nil
+		}
+	}
+	return &http.Response{
+		StatusCode: 200,
+		Body:       io.NopCloser(bytes.NewBufferString(`{}`)),
+		Header:     make(http.Header),
+	}, nil
+}
+
 // TestDeleteServer_ServerExists_IntegrationStyle verifies that when a server
 // DOES exist, DeleteServer proceeds to call the delete API endpoint (doesn't
-// short-circuit). We verify this by checking that the mock receives the
-// expected POST call.
+// short-circuit) and the verification GET confirms deletion.
 func TestDeleteServer_ServerExists_IntegrationStyle(t *testing.T) {
-	// Mock API returns an IP service with a matching server
-	api := newTestAPI(map[string]string{
-		"/GET/9": `{
-			"data": {
-				"dataset": {
-					"ipService": [[{
-						"sId": "1",
-						"InterfaceID": "0",
-						"ChannelID": "0",
-						"ipAddr": "10.0.0.1",
-						"port": "80",
-						"contentServer": {"cServerId": [{
-							"cId": "0",
-							"CSIPAddr": "10.0.0.2",
-							"CSPort": "8080",
-							"WeightFactor": "100"
-						}]}
-					}]]
-				}
+	serverExistsJSON := `{
+		"data": {
+			"dataset": {
+				"ipService": [[{
+					"sId": "1",
+					"InterfaceID": "0",
+					"ChannelID": "0",
+					"ipAddr": "10.0.0.1",
+					"port": "80",
+					"contentServer": {"cServerId": [{
+						"cId": "0",
+						"CSIPAddr": "10.0.0.2",
+						"CSPort": "8080",
+						"WeightFactor": "100"
+					}]}
+				}]]
 			}
-		}`,
-	})
+		}
+	}`
+	serverGoneJSON := `{
+		"data": {
+			"dataset": {
+				"ipService": [[{
+					"sId": "1",
+					"InterfaceID": "0",
+					"ChannelID": "0",
+					"ipAddr": "10.0.0.1",
+					"port": "80",
+					"contentServer": {"cServerId": []}
+				}]]
+			}
+		}
+	}`
+
+	mock := &statefulMockHTTPClient{
+		beforeDelete: map[string]string{"/GET/9": serverExistsJSON},
+		afterDelete:  map[string]string{"/GET/9": serverGoneJSON},
+	}
+	api := NewAPI("http://localhost", "admin", "admin", "8080")
+	api.cookieGuid = "test-guid"
+	api.client = mock
 
 	model := swagger.CServerId{
 		CSIPAddr: "10.0.0.2",
 		CSPort:   "8080",
 	}
 
-	// This should NOT return an error - the server exists and the mock
-	// will accept the delete POST
+	// This should NOT return an error - the server exists, gets deleted,
+	// and the verification GET confirms it's gone
 	err := DeleteServer(api, model, "10.0.0.1", "80")
 	if err != nil {
 		t.Errorf("DeleteServer for existing server should succeed, got: %v", err)

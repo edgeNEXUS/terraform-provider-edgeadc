@@ -319,6 +319,16 @@ func DeleteRealserverMonitor(client *API, name string) (err error) {
 	if deleteErr != nil {
 		return deleteErr
 	}
+
+	// Do a fresh GET to verify the monitor was deleted
+	result, readErr := ReadRealserverMonitor(client, name)
+	if readErr != nil {
+		// Read error likely means the monitor is gone – treat as success
+		return nil
+	}
+	if result.Id != "" {
+		return fmt.Errorf("realserver monitor %s still exists after delete", name)
+	}
 	return nil
 }
 

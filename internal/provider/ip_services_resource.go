@@ -584,7 +584,21 @@ func DeleteIPService(client *API, ipAddr string, port string) error {
 	}
 	jsonBytes, _ := json.Marshal(removeIp)
 	_, err := client.PostEdgeADCApi("/POST/9?iAction=3&iType=4", jsonBytes)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Do a fresh GET to verify the IP service was deleted
+	_, readErr := ReadIPService(client, ipAddr, port)
+	if readErr != nil {
+		// "ip service not found" means deletion succeeded
+		if strings.HasPrefix(readErr.Error(), errServiceNotFound) {
+			return nil
+		}
+		// Some other read error – deletion may still have succeeded
+		return nil
+	}
+	return fmt.Errorf("%s with address: %s and port: %s still exists after delete", errServiceNotFound, ipAddr, port)
 }
 
 func HandleEmptyResponse(jsonResponse string) swagger.IpServices {

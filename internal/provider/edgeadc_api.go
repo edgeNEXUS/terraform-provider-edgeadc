@@ -258,6 +258,9 @@ func (api *API) postEdgeADCApiWithHeadersInternal(path string, body []byte, head
 		tflog.Error(api.loggingContext, string(b))
 		return "", fmt.Errorf("EdgeADC: %s - %s", path, edgeResponse.StatusText)
 	}
+	if edgeResponse.StatusImage == "jetWarning" {
+		tflog.Warn(api.loggingContext, fmt.Sprintf("EdgeADC warning on %s: %s", path, edgeResponse.StatusText))
+	}
 
 	// Return Object
 	return string(b), nil

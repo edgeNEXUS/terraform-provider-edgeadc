@@ -108,9 +108,12 @@ func (r *usersResource) Read(ctx context.Context, req resource.ReadRequest, resp
 
 func (r *usersResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var data resource_users.UsersModel
+	var stateData resource_users.UsersModel
 
 	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	// Read prior state to get the old password for the API
+	resp.Diagnostics.Append(req.State.Get(ctx, &stateData)...)
 
 	if resp.Diagnostics.HasError() {
 		return
@@ -118,6 +121,8 @@ func (r *usersResource) Update(ctx context.Context, req resource.UpdateRequest, 
 
 	// Update API call logic
 	model := r.ToUsersUpdate(data)
+	// The EdgeADC API requires OldPassword for update operations
+	model.OldPassword = stateData.NewPassword.ValueString()
 	usersMemberOpt, err := UpdateUser(r.client, model)
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -180,7 +185,10 @@ func ReadUser(client *API, model swagger.UsersMembersOpt) (out swagger.UsersMemb
 	if jsonErr != nil {
 		return out, jsonErr
 	}
-	usersMemberOpt := GetUsersMembersOptByName(usersData, model.UserName)
+	usersMemberOpt, found := GetUsersMembersOptByName(usersData, model.UserName)
+	if !found {
+		return out, fmt.Errorf("user %q not found in API response", model.UserName)
+	}
 	return usersMemberOpt, nil
 }
 
@@ -188,8 +196,13 @@ func CreateUser(client *API, model swagger.UsersAdd) (out swagger.UsersMembersOp
 	jsonBytes, _ := json.Marshal(model)
 	// Always GET before POST to avoid "Another user has made changes" error
 	_, _ = client.GetEdgeADCObject("/GET/33")
-	_, err = client.PostEdgeADCApi("/POST/33?iAction=1&iType=1", jsonBytes)
+	resp, err := client.PostEdgeADCApi("/POST/33?iAction=1&iType=1", jsonBytes)
 	if err != nil {
+		return out, err
+	}
+	// The generic API handler only treats jetError as a hard error.
+	// For users, jetWarning indicates a validation failure (e.g. invalid username).
+	if err := checkUsersWarning(resp); err != nil {
 		return out, err
 	}
 	// Do a fresh GET to verify the change was applied and capture any
@@ -202,14 +215,33 @@ func UpdateUser(client *API, model swagger.UsersUpdate) (out swagger.UsersMember
 	jsonBytes, _ := json.Marshal(model)
 	// Always GET before POST to avoid "Another user has made changes" error
 	_, _ = client.GetEdgeADCObject("/GET/33")
-	_, err = client.PostEdgeADCApi("/POST/33?iAction=1&iType=2", jsonBytes)
+	resp, err := client.PostEdgeADCApi("/POST/33?iAction=1&iType=2", jsonBytes)
 	if err != nil {
+		return out, err
+	}
+	// The generic API handler only treats jetError as a hard error.
+	// For users, jetWarning indicates a validation failure (e.g. invalid username).
+	if err := checkUsersWarning(resp); err != nil {
 		return out, err
 	}
 	// Do a fresh GET to verify the change was applied and capture any
 	// server-side transformations or defaults.
 	readModel := swagger.UsersMembersOpt{UserName: model.UserName, NewPassword: model.NewPassword}
 	return ReadUser(client, readModel)
+}
+
+// checkUsersWarning inspects the POST response body for jetWarning.
+// The users API returns jetWarning for validation errors (e.g. invalid username
+// format, missing old password) which should be treated as hard errors.
+func checkUsersWarning(responseBody string) error {
+	var edgeResp EdgeResponse
+	if err := json.Unmarshal([]byte(responseBody), &edgeResp); err != nil {
+		return nil // can't parse, not a warning
+	}
+	if edgeResp.StatusImage == "jetWarning" {
+		return fmt.Errorf("EdgeADC users: %s", edgeResp.StatusText)
+	}
+	return nil
 }
 
 func DeleteUser(client *API, userName string) error {
@@ -291,11 +323,14 @@ func (r *usersResource) ToTerraformModel(users swagger.UsersMembersOpt) resource
 	return usersModel
 }
 
-func GetUsersMembersOptByName(usersData swagger.UsersData, username string) swagger.UsersMembersOpt {
+func GetUsersMembersOptByName(usersData swagger.UsersData, username string) (swagger.UsersMembersOpt, bool) {
+	if usersData.Members == nil {
+		return swagger.UsersMembersOpt{}, false
+	}
 	for _, user := range usersData.Members.Dataset {
 		if user.UserName == username {
-			return user
+			return user, true
 		}
 	}
-	return swagger.UsersMembersOpt{}
+	return swagger.UsersMembersOpt{}, false
 }

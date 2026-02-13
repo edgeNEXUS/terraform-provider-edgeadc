@@ -22,12 +22,20 @@ package provider
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
+
+// testdataDir returns the absolute path to the testdata directory.
+func testdataDir() string {
+	_, filename, _, _ := runtime.Caller(0)
+	return filepath.Join(filepath.Dir(filename), "..", "..", "testdata")
+}
 
 // testAccProtoV6ProviderFactories configures the provider for acceptance tests.
 var testAccProtoV6ProviderFactories = map[string]func() (tfprotov6.ProviderServer, error){
@@ -449,6 +457,286 @@ resource "edgeadc_server" "acc_server" {
 					resource.TestCheckResourceAttr("edgeadc_realserver_monitor.acc_monitor", "type", "Check200"),
 					resource.TestCheckResourceAttr("edgeadc_ip_services.acc_vs", "service_name", "tf-acc-full-test"),
 					resource.TestCheckResourceAttr("edgeadc_server.acc_server", "cs_ip_addr", "10.254.254.200"),
+				),
+			},
+		},
+	})
+}
+
+// ============================================================================
+// Users acceptance tests
+// ============================================================================
+
+// TestAccUsers_CreateReadUpdateDelete exercises the full CRUD lifecycle
+// for the edgeadc_users resource.
+func TestAccUsers_CreateReadUpdateDelete(t *testing.T) {
+	testAccPreCheck(t)
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			// Step 1: Create user
+			{
+				Config: providerConfig() + `
+resource "edgeadc_users" "test" {
+  user_name    = "tf_acc_test_user"
+  new_password = "TestPass123!"
+  is_admin     = "0"
+  is_api       = "1"
+  is_guir      = "0"
+  is_guiw      = "0"
+  is_ssh       = "0"
+  is_add_on    = "0"
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("edgeadc_users.test", "user_name", "tf_acc_test_user"),
+					resource.TestCheckResourceAttr("edgeadc_users.test", "is_api", "1"),
+					resource.TestCheckResourceAttr("edgeadc_users.test", "is_admin", "0"),
+				),
+			},
+			// Step 2: Update permissions
+			{
+				Config: providerConfig() + `
+resource "edgeadc_users" "test" {
+  user_name    = "tf_acc_test_user"
+  new_password = "TestPass123!"
+  is_admin     = "0"
+  is_api       = "1"
+  is_guir      = "1"
+  is_guiw      = "1"
+  is_ssh       = "0"
+  is_add_on    = "0"
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("edgeadc_users.test", "is_guir", "1"),
+					resource.TestCheckResourceAttr("edgeadc_users.test", "is_guiw", "1"),
+				),
+			},
+		},
+	})
+}
+
+// ============================================================================
+// SSL Certificates acceptance tests
+// ============================================================================
+
+// TestAccSslCertificates_CreateAndDelete creates an SSL certificate from a
+// PFX file, verifies it exists, then destroys it.
+func TestAccSslCertificates_CreateAndDelete(t *testing.T) {
+	testAccPreCheck(t)
+
+	pfxPath := filepath.Join(testdataDir(), "test-cert.pfx")
+	if _, err := os.Stat(pfxPath); os.IsNotExist(err) {
+		t.Skipf("test PFX file not found at %s — skipping", pfxPath)
+	}
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: providerConfig() + fmt.Sprintf(`
+resource "edgeadc_ssl_certificates" "test" {
+  id        = "tf-acc-test-cert"
+  file_path = %q
+  password  = "testpass123"
+}
+`, pfxPath),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("edgeadc_ssl_certificates.test", "id", "tf-acc-test-cert"),
+				),
+			},
+		},
+	})
+}
+
+// ============================================================================
+// Custom Monitor acceptance tests
+// ============================================================================
+
+// TestAccCustomMonitor_CreateAndDelete creates a custom monitor from a
+// Perl script, verifies it exists, then destroys it.
+func TestAccCustomMonitor_CreateAndDelete(t *testing.T) {
+	testAccPreCheck(t)
+
+	plPath := filepath.Join(testdataDir(), "test-monitor.pl")
+	if _, err := os.Stat(plPath); os.IsNotExist(err) {
+		t.Skipf("test Perl file not found at %s — skipping", plPath)
+	}
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: providerConfig() + fmt.Sprintf(`
+resource "edgeadc_custom_monitor" "test" {
+  name      = "tf-acc-test-csm"
+  file_path = %q
+}
+`, plPath),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("edgeadc_custom_monitor.test", "name", "tf-acc-test-csm"),
+					resource.TestCheckResourceAttrSet("edgeadc_custom_monitor.test", "id"),
+				),
+			},
+		},
+	})
+}
+
+
+// ============================================================================
+// Multi-monitor tests (reproduces customer ID renumbering bug)
+// ============================================================================
+
+// TestAccMultiMonitor_CreateDeleteNoDrift creates 3 monitors, then removes
+// the middle one. This reproduces the customer bug where the ADC renumbers
+// monitor IDs after deletion, causing "was cty.StringVal("6"), but now
+// cty.StringVal("5")" errors.
+func TestAccMultiMonitor_CreateDeleteNoDrift(t *testing.T) {
+	testAccPreCheck(t)
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			// Step 1: Create 3 monitors
+			{
+				Config: providerConfig() + `
+resource "edgeadc_realserver_monitor" "mon_a" {
+  name        = "tf-acc-multi-mon-a"
+  description = "Monitor A"
+  type        = "Check200"
+  url         = "/a"
+  content     = ""
+  username    = ""
+  password    = ""
+  threshold   = "3"
+}
+
+resource "edgeadc_realserver_monitor" "mon_b" {
+  name        = "tf-acc-multi-mon-b"
+  description = "Monitor B"
+  type        = "CheckHead"
+  url         = "/b"
+  content     = ""
+  username    = ""
+  password    = ""
+  threshold   = "3"
+}
+
+resource "edgeadc_realserver_monitor" "mon_c" {
+  name        = "tf-acc-multi-mon-c"
+  description = "Monitor C"
+  type        = "Connect"
+  url         = ""
+  content     = ""
+  username    = ""
+  password    = ""
+  threshold   = "3"
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("edgeadc_realserver_monitor.mon_a", "name", "tf-acc-multi-mon-a"),
+					resource.TestCheckResourceAttr("edgeadc_realserver_monitor.mon_b", "name", "tf-acc-multi-mon-b"),
+					resource.TestCheckResourceAttr("edgeadc_realserver_monitor.mon_c", "name", "tf-acc-multi-mon-c"),
+				),
+			},
+			// Step 2: Remove monitor B — this triggers ID renumbering on the ADC
+			{
+				Config: providerConfig() + `
+resource "edgeadc_realserver_monitor" "mon_a" {
+  name        = "tf-acc-multi-mon-a"
+  description = "Monitor A"
+  type        = "Check200"
+  url         = "/a"
+  content     = ""
+  username    = ""
+  password    = ""
+  threshold   = "3"
+}
+
+resource "edgeadc_realserver_monitor" "mon_c" {
+  name        = "tf-acc-multi-mon-c"
+  description = "Monitor C"
+  type        = "Connect"
+  url         = ""
+  content     = ""
+  username    = ""
+  password    = ""
+  threshold   = "3"
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("edgeadc_realserver_monitor.mon_a", "name", "tf-acc-multi-mon-a"),
+					resource.TestCheckResourceAttr("edgeadc_realserver_monitor.mon_c", "name", "tf-acc-multi-mon-c"),
+				),
+			},
+		},
+	})
+}
+
+// ============================================================================
+// No-drift re-plan tests
+// ============================================================================
+
+// TestAccNoDrift_ReplanAfterApply applies a config with multiple resources,
+// then re-applies the EXACT same config. The second step must produce zero
+// changes — any drift means the provider is not correctly reading back state.
+func TestAccNoDrift_ReplanAfterApply(t *testing.T) {
+	testAccPreCheck(t)
+
+	config := providerConfig() + `
+resource "edgeadc_realserver_monitor" "drift_mon" {
+  name        = "tf-acc-drift-monitor"
+  description = "Drift test monitor"
+  type        = "HTTP 200 OK"
+  url         = "/drift"
+  content     = ""
+  username    = ""
+  password    = ""
+  threshold   = "3"
+}
+
+resource "edgeadc_ip_services" "drift_vs" {
+  ip_addr                   = "10.254.254.20"
+  subnet_mask               = "255.255.255.255"
+  service_name              = "tf-acc-drift-test"
+  local_port_enabled_checked = "true"
+  primary_checked           = "Active"
+  service_type              = "HTTP"
+  port                      = "19095"
+  server_monitoring         = edgeadc_realserver_monitor.drift_mon.name
+}
+
+resource "edgeadc_server" "drift_srv" {
+  ip_service   = edgeadc_ip_services.drift_vs.id
+  cs_activity  = "1"
+  cs_ip_addr   = "10.254.254.220"
+  cs_port      = "80"
+  cs_notes     = "tf-acc-drift-server"
+  weight_factor = "100"
+}
+`
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			// Step 1: Apply
+			{
+				Config: config,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("edgeadc_realserver_monitor.drift_mon", "type", "HTTP 200 OK"),
+					resource.TestCheckResourceAttr("edgeadc_ip_services.drift_vs", "service_name", "tf-acc-drift-test"),
+					resource.TestCheckResourceAttr("edgeadc_server.drift_srv", "cs_ip_addr", "10.254.254.220"),
+				),
+			},
+			// Step 2: Re-apply same config — must produce zero changes
+			{
+				Config: config,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("edgeadc_realserver_monitor.drift_mon", "type", "HTTP 200 OK"),
+					resource.TestCheckResourceAttr("edgeadc_ip_services.drift_vs", "service_name", "tf-acc-drift-test"),
+					resource.TestCheckResourceAttr("edgeadc_server.drift_srv", "cs_ip_addr", "10.254.254.220"),
 				),
 			},
 		},

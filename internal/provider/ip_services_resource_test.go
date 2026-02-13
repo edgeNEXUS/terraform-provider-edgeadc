@@ -471,16 +471,12 @@ func TestToCopyIp_IncludesPrimaryChecked(t *testing.T) {
 	}
 }
 
-// TestPrimaryChecked_EmptyStringBecomesUnknown verifies that the
-// emptyStringToUnknown plan modifier on primary_checked converts ""
-// to unknown. This is critical because the ADC API normalizes "" to
-// either "Active" or "Passive" depending on context, and a static
-// plan value of "" would cause an inconsistency with whatever the
-// API returns.
-//
-// This test would have caught: "primary_checked: was cty.StringVal(""),
-// but now cty.StringVal("Active")"
-func TestPrimaryChecked_EmptyStringBecomesUnknown(t *testing.T) {
+// TestPrimaryChecked_IsOptionalComputed verifies that primary_checked is
+// Optional+Computed with UseStateForUnknown. Users should either set
+// "Active" or "Passive" explicitly, or omit the field entirely to accept
+// the server default. Setting "" is not supported because the API may
+// return a different value which would cause an inconsistency.
+func TestPrimaryChecked_IsOptionalComputed(t *testing.T) {
 	ctx := context.Background()
 	schema := resource_ip_services.IpServiceResourceSchema(ctx)
 
@@ -505,25 +501,9 @@ func TestPrimaryChecked_EmptyStringBecomesUnknown(t *testing.T) {
 		t.Error("primary_checked should NOT have a static Default -- the API can return either 'Active' or 'Passive'")
 	}
 
-	// Verify that one of the plan modifiers handles empty strings
-	// by simulating a plan modify with ""
-	found := false
-	for _, pm := range strAttr.PlanModifiers {
-		req := planmodifier.StringRequest{
-			PlanValue: types.StringValue(""),
-		}
-		resp := &planmodifier.StringResponse{
-			PlanValue: types.StringValue(""),
-		}
-		pm.PlanModifyString(ctx, req, resp)
-		if resp.PlanValue.IsUnknown() {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Error("primary_checked must have a plan modifier that converts '' to unknown, " +
-			"otherwise the API returning 'Active' or 'Passive' will cause an inconsistency")
+	// Verify there's at least one plan modifier (UseStateForUnknown)
+	if len(strAttr.PlanModifiers) == 0 {
+		t.Error("primary_checked should have at least one plan modifier (UseStateForUnknown)")
 	}
 }
 

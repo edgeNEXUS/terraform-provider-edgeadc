@@ -2,45 +2,12 @@ package resource_realserver_monitor
 
 import (
 	"context"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
-
-// monitorTypeNormalizer is a plan modifier that converts friendly UI monitor
-// type names (e.g. "HTTP Head") to their backend equivalents (e.g. "CheckHead")
-// during the plan phase. This ensures the planned value matches what the API
-// will store and return, preventing "inconsistent result after apply" errors.
-type monitorTypeNormalizer struct{}
-
-func (m monitorTypeNormalizer) Description(_ context.Context) string {
-	return "Normalizes friendly monitor type names to backend names"
-}
-
-func (m monitorTypeNormalizer) MarkdownDescription(_ context.Context) string {
-	return "Normalizes friendly monitor type names to backend names"
-}
-
-func (m monitorTypeNormalizer) PlanModifyString(_ context.Context, req planmodifier.StringRequest, resp *planmodifier.StringResponse) {
-	if req.PlanValue.IsNull() || req.PlanValue.IsUnknown() {
-		return
-	}
-	// Map of friendly UI names to backend names
-	friendly := map[string]string{
-		"HTTP 200 OK":   "Check200",
-		"HTTP Head":     "CheckHead",
-		"HTTP Response": "CheckResponse",
-		"TCP Connect":   "Connect",
-		"ICMP Ping":     "Ping",
-		"None":          "None",
-		"DICOM":         "DICOM",
-		"HTTP Post":     "CheckPOST",
-	}
-	if backend, ok := friendly[req.PlanValue.ValueString()]; ok {
-		resp.PlanValue = types.StringValue(backend)
-	}
-}
 
 func RealserverMonitorResourceSchema(ctx context.Context) schema.Schema {
 	return schema.Schema{
@@ -67,15 +34,17 @@ func RealserverMonitorResourceSchema(ctx context.Context) schema.Schema {
 				Description: "The monitor type. Accepts either backend names or friendly UI names. " +
 					"Backend names: Check200, CheckHead, CheckResponse, Connect, Ping, None, DICOM, CheckPOST. " +
 					"Friendly names: HTTP 200 OK, HTTP Head, HTTP Response, TCP Connect, ICMP Ping, None, DICOM, HTTP Post. " +
-					"Custom monitor script names are also accepted.",
-				PlanModifiers: []planmodifier.String{
-					monitorTypeNormalizer{},
-				},
+					"Custom monitor script names are also accepted. " +
+					"Friendly names are normalized to backend names when sent to the API.",
 			},
 			"ssl": schema.StringAttribute{
 				Optional:            true,
-				Description:         "SSL/TLS setting for the monitor. Valid values: auto, secured, unsecured",
-				MarkdownDescription: "SSL/TLS setting for the monitor. Valid values: `auto`, `secured`, `unsecured`",
+				Computed:            true,
+				Description:         "SSL/TLS setting for the monitor. Valid values: auto, secured, unsecured. Defaults to auto if not specified.",
+				MarkdownDescription: "SSL/TLS setting for the monitor. Valid values: `auto`, `secured`, `unsecured`. Defaults to `auto` if not specified.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"url": schema.StringAttribute{
 				Required:    true,

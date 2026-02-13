@@ -61,9 +61,10 @@ func (r *realserverMonitorResource) Create(ctx context.Context, req resource.Cre
 		return
 	}
 
-	// Normalize the type from friendly name to backend name so the plan
-	// value matches what the API will store and return.
-	data.Type = types.StringValue(NormalizeMonitorType(data.Type.ValueString()))
+	// Save user's original type value before normalization so we can
+	// preserve it in state (the API stores backend names but the user
+	// may have used a friendly name like "HTTP Head").
+	userType := data.Type
 
 	// mutex to allow only a single resource to be managed at once
 	lockName := fmt.Sprintf("realserver_monitor")
@@ -82,6 +83,9 @@ func (r *realserverMonitorResource) Create(ctx context.Context, req resource.Cre
 	}
 
 	data = r.ToTerraformModel(realserverMonitorOpt)
+	// Restore the user's original type value so state matches the config,
+	// preventing perpetual diffs when friendly names are used.
+	data.Type = userType
 
 	// Save data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -97,6 +101,12 @@ func (r *realserverMonitorResource) Read(ctx context.Context, req resource.ReadR
 		return
 	}
 
+	// Preserve the type value from state. The user may have used a
+	// friendly name (e.g. "HTTP Head") which was stored in state. The
+	// API returns the backend name ("CheckHead"), so we restore the
+	// user's original value to prevent perpetual diffs.
+	stateType := data.Type
+
 	// Read API call logic
 	model := r.ToRealserverMonitorOpt(data)
 	realserverMonitorOpt, err := ReadRealserverMonitor(r.client, model.Name)
@@ -109,6 +119,14 @@ func (r *realserverMonitorResource) Read(ctx context.Context, req resource.ReadR
 	}
 
 	data = r.ToTerraformModel(realserverMonitorOpt)
+
+	// Restore the user's original type from state. If the backend name
+	// maps to the same normalised value as the state type, keep the
+	// state value. This handles both "HTTP Head" ↔ "CheckHead" and
+	// direct backend name usage.
+	if NormalizeMonitorType(stateType.ValueString()) == NormalizeMonitorType(data.Type.ValueString()) {
+		data.Type = stateType
+	}
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -124,8 +142,8 @@ func (r *realserverMonitorResource) Update(ctx context.Context, req resource.Upd
 		return
 	}
 
-	// Normalize the type from friendly name to backend name
-	data.Type = types.StringValue(NormalizeMonitorType(data.Type.ValueString()))
+	// Save user's original type value before normalization
+	userType := data.Type
 
 	// mutex to allow only a single resource to be managed at once
 	lockName := fmt.Sprintf("realserver_monitor")
@@ -143,6 +161,8 @@ func (r *realserverMonitorResource) Update(ctx context.Context, req resource.Upd
 		return
 	}
 	data = r.ToTerraformModel(realserverMonitorOpt)
+	// Restore the user's original type value
+	data.Type = userType
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)

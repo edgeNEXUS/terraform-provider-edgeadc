@@ -106,7 +106,8 @@ resource "edgeadc_realserver_monitor" "test" {
 
 // TestAccRealserverMonitor_FriendlyTypeName verifies that using a friendly
 // UI name like "HTTP Head" works correctly — the monitor is created with
-// the backend name "CheckHead" and functions properly.
+// the backend name on the API, but the user's friendly name is preserved
+// in state to prevent perpetual diffs.
 func TestAccRealserverMonitor_FriendlyTypeName(t *testing.T) {
 	testAccPreCheck(t)
 
@@ -128,8 +129,8 @@ resource "edgeadc_realserver_monitor" "friendly" {
 `,
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("edgeadc_realserver_monitor.friendly", "name", "tf-acc-test-friendly"),
-					// The type should be normalized to the backend name
-					resource.TestCheckResourceAttr("edgeadc_realserver_monitor.friendly", "type", "CheckHead"),
+					// The user's friendly name is preserved in state
+					resource.TestCheckResourceAttr("edgeadc_realserver_monitor.friendly", "type", "HTTP Head"),
 				),
 			},
 		},
@@ -219,10 +220,11 @@ resource "edgeadc_ip_services" "test" {
 	})
 }
 
-// TestAccIpServices_PrimaryCheckedEmpty verifies that setting primary_checked
-// to empty string does NOT cause an inconsistent state error. The API will
-// return either "Active" or "Passive", and the provider must accept it.
-func TestAccIpServices_PrimaryCheckedEmpty(t *testing.T) {
+// TestAccIpServices_PrimaryCheckedOmitted verifies that omitting primary_checked
+// does NOT cause an inconsistent state error. The API will return either
+// "Active" or "Passive", and the provider must accept it because the field
+// is Optional+Computed with UseStateForUnknown.
+func TestAccIpServices_PrimaryCheckedOmitted(t *testing.T) {
 	testAccPreCheck(t)
 
 	resource.Test(t, resource.TestCase{
@@ -235,7 +237,6 @@ resource "edgeadc_ip_services" "pc_test" {
   subnet_mask               = "255.255.255.255"
   service_name              = "tf-acc-test-pc"
   local_port_enabled_checked = "true"
-  primary_checked           = ""
   service_type              = "HTTP"
   port                      = "19081"
 }

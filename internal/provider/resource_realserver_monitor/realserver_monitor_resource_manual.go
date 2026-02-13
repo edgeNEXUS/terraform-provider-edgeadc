@@ -16,10 +16,9 @@ func RealserverMonitorResourceSchema(ctx context.Context) schema.Schema {
 				Required:    false,
 				Computed:    true,
 				Description: "The internal ADC id assigned to the realserver monitor. This value may change when monitors are added or removed.",
-				// Note: UseStateForUnknown is deliberately NOT used here.
-				// The ADC renumbers monitor IDs when monitors are added or
-				// removed, so the ID can change between applies. Leaving it
-				// as unknown in the plan allows any returned value to be accepted.
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"name": schema.StringAttribute{
 				Required:    true,

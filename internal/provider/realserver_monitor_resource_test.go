@@ -214,9 +214,11 @@ func TestGetRealConfigMonitoringOptByName_NilDataset(t *testing.T) {
 // is not stable. Using UseStateForUnknown would cause the plan to preserve
 // the old ID, but the API returns a new one -> inconsistency.
 //
-// This test would have caught: "produced an unexpected new value: .id: was
-// cty.StringVal("6"), but now cty.StringVal("5")"
-func TestRealserverMonitorSchema_IdIsComputedWithoutUseStateForUnknown(t *testing.T) {
+// TestRealserverMonitorSchema_IdIsComputedWithUseStateForUnknown verifies that
+// the id field uses UseStateForUnknown so that plans don't perpetually show
+// "(known after apply)". The Update handler separately preserves the planned
+// id to avoid "inconsistent result" errors when the ADC renumbers IDs.
+func TestRealserverMonitorSchema_IdIsComputedWithUseStateForUnknown(t *testing.T) {
 	ctx := context.Background()
 	schema := resource_realserver_monitor.RealserverMonitorResourceSchema(ctx)
 
@@ -234,10 +236,9 @@ func TestRealserverMonitorSchema_IdIsComputedWithoutUseStateForUnknown(t *testin
 		t.Error("'id' should be Computed")
 	}
 
-	// Verify no plan modifiers are set (UseStateForUnknown would be one)
-	if len(strAttr.PlanModifiers) > 0 {
-		t.Errorf("'id' should have no plan modifiers (has %d). "+
-			"UseStateForUnknown must NOT be used because ADC renumbers monitor IDs",
+	// Verify exactly one plan modifier (UseStateForUnknown)
+	if len(strAttr.PlanModifiers) != 1 {
+		t.Fatalf("'id' should have exactly 1 plan modifier (UseStateForUnknown), has %d",
 			len(strAttr.PlanModifiers))
 	}
 }

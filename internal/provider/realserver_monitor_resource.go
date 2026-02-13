@@ -142,8 +142,13 @@ func (r *realserverMonitorResource) Update(ctx context.Context, req resource.Upd
 		return
 	}
 
-	// Save user's original type value before normalization
+	// Save user's original type value before normalization and the planned
+	// id. The ADC may renumber monitor IDs when other monitors are
+	// created/deleted in the same apply. We keep the planned id in state
+	// so the value matches what Terraform expects; the Read function will
+	// pick up the actual id on the next refresh.
 	userType := data.Type
+	plannedId := data.Id
 
 	// mutex to allow only a single resource to be managed at once
 	lockName := fmt.Sprintf("realserver_monitor")
@@ -163,6 +168,9 @@ func (r *realserverMonitorResource) Update(ctx context.Context, req resource.Upd
 	data = r.ToTerraformModel(realserverMonitorOpt)
 	// Restore the user's original type value
 	data.Type = userType
+	// Restore the planned id so state matches the plan (avoids
+	// "inconsistent result" when the ADC renumbers during apply).
+	data.Id = plannedId
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)

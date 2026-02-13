@@ -472,10 +472,8 @@ func TestToCopyIp_IncludesPrimaryChecked(t *testing.T) {
 }
 
 // TestPrimaryChecked_IsOptionalComputed verifies that primary_checked is
-// Optional+Computed with UseStateForUnknown. Users should either set
-// "Active" or "Passive" explicitly, or omit the field entirely to accept
-// the server default. Setting "" is not supported because the API may
-// return a different value which would cause an inconsistency.
+// Optional+Computed with UseStateForUnknown. The CRUD handlers (not a plan
+// modifier) handle the empty-string case by preserving "" in state.
 func TestPrimaryChecked_IsOptionalComputed(t *testing.T) {
 	ctx := context.Background()
 	schema := resource_ip_services.IpServiceResourceSchema(ctx)
@@ -501,9 +499,10 @@ func TestPrimaryChecked_IsOptionalComputed(t *testing.T) {
 		t.Error("primary_checked should NOT have a static Default -- the API can return either 'Active' or 'Passive'")
 	}
 
-	// Verify there's at least one plan modifier (UseStateForUnknown)
-	if len(strAttr.PlanModifiers) == 0 {
-		t.Error("primary_checked should have at least one plan modifier (UseStateForUnknown)")
+	// Verify there is 1 plan modifier (UseStateForUnknown)
+	if len(strAttr.PlanModifiers) != 1 {
+		t.Errorf("primary_checked should have 1 plan modifier (UseStateForUnknown), has %d",
+			len(strAttr.PlanModifiers))
 	}
 }
 

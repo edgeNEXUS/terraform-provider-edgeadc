@@ -89,8 +89,9 @@ func IpServiceResourceSchema(ctx context.Context) schema.Schema {
 			},
 			// primary_checked controls whether the VIP is Active or Passive.
 			// If omitted, the API assigns a default (typically "Active").
-			// Users should set "Active" or "Passive" explicitly, or omit
-			// the field to accept the server default.
+			// If set to "" (empty string), the CRUD handlers preserve ""
+			// in state so the plan/state values always match. The Read
+			// handler also preserves "" when the API returns "Active".
 			"primary_checked": schema.StringAttribute{
 				Optional: true,
 				Computed: true,

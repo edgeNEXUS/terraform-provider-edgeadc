@@ -251,6 +251,41 @@ resource "edgeadc_ip_services" "pc_test" {
 	})
 }
 
+// TestAccIpServices_PrimaryCheckedEmptyString reproduces the exact customer
+// error: setting primary_checked = "" causes "Provider produced inconsistent
+// result after apply" because the API returns "Active". The
+// emptyStringToActiveModifier should convert "" to "Active" during planning.
+func TestAccIpServices_PrimaryCheckedEmptyString(t *testing.T) {
+	testAccPreCheck(t)
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: providerConfig() + `
+resource "edgeadc_ip_services" "pc_empty" {
+  ip_addr                   = "10.254.254.6"
+  subnet_mask               = "255.255.255.255"
+  service_name              = "tf-acc-test-pc-empty"
+  local_port_enabled_checked = "true"
+  service_type              = "HTTP"
+  port                      = "19086"
+  primary_checked           = ""
+}
+`,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("edgeadc_ip_services.pc_empty", "ip_addr", "10.254.254.6"),
+					// The CRUD handler preserves "" in state even though the API
+					// returns "Active". This matches the plan value, avoiding
+					// inconsistency errors.
+					resource.TestCheckResourceAttr("edgeadc_ip_services.pc_empty", "primary_checked", ""),
+				),
+			},
+		},
+	})
+}
+
+
 // TestAccIpServices_Update verifies updating a VS doesn't produce
 // inconsistent state errors.
 func TestAccIpServices_Update(t *testing.T) {

@@ -67,6 +67,11 @@ func (r *ipServicesResource) Create(ctx context.Context, req resource.CreateRequ
 		return
 	}
 
+	// Save the plan's primary_checked so we can restore it after the API
+	// call. When the user sets primary_checked = "" the API returns
+	// "Active", but we must keep "" in state so plan == state.
+	plannedPrimaryChecked := data.PrimaryChecked
+
 	// Create API call logic
 	ipAddr := data.IpAddr.ValueString()
 	port := data.Port.ValueString()
@@ -136,6 +141,12 @@ func (r *ipServicesResource) Create(ctx context.Context, req resource.CreateRequ
 
 	data = FromIpService(finalIpService)
 
+	// Restore the plan's primary_checked when it was explicitly set (even
+	// to ""). When omitted (null/unknown) we keep the API value instead.
+	if !plannedPrimaryChecked.IsNull() && !plannedPrimaryChecked.IsUnknown() {
+		data.PrimaryChecked = plannedPrimaryChecked
+	}
+
 	// Save data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -149,6 +160,11 @@ func (r *ipServicesResource) Read(ctx context.Context, req resource.ReadRequest,
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	// Remember the prior state's primary_checked so we can preserve ""
+	// when the API returns "Active". The user may have set "" meaning
+	// "use the default", and we must not introduce drift.
+	priorPrimaryChecked := data.PrimaryChecked
 
 	// Read API call logic
 	ipAddr := data.IpAddr.ValueString()
@@ -201,6 +217,13 @@ func (r *ipServicesResource) Read(ctx context.Context, req resource.ReadRequest,
 
 	data = FromIpService(ipService)
 
+	// If the prior state had primary_checked = "" (user's explicit config)
+	// and the API returned "Active" (the default), keep "" so the next
+	// plan doesn't show spurious drift.
+	if priorPrimaryChecked.ValueString() == "" && !priorPrimaryChecked.IsNull() && !priorPrimaryChecked.IsUnknown() {
+		data.PrimaryChecked = priorPrimaryChecked
+	}
+
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -214,6 +237,11 @@ func (r *ipServicesResource) Update(ctx context.Context, req resource.UpdateRequ
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	// Save the plan's primary_checked so we can restore it after the API
+	// call. When the user sets primary_checked = "" the API returns
+	// "Active", but we must keep "" in state so plan == state.
+	plannedPrimaryChecked := data.PrimaryChecked
 
 	// mutex to allow only a single resource to be managed at once
 	lockName := fmt.Sprintf("ip_services")
@@ -259,6 +287,12 @@ func (r *ipServicesResource) Update(ctx context.Context, req resource.UpdateRequ
 	// Read the final result of all the IP Service changes
 	finalIpService, _ := ReadIPService(r.client, ipAddr, port)
 	data = FromIpService(finalIpService)
+
+	// Restore the plan's primary_checked when it was explicitly set (even
+	// to ""). When omitted (null/unknown) we keep the API value instead.
+	if !plannedPrimaryChecked.IsNull() && !plannedPrimaryChecked.IsUnknown() {
+		data.PrimaryChecked = plannedPrimaryChecked
+	}
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)

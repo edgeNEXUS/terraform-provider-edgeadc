@@ -357,6 +357,13 @@ func DeleteServer(client *API, model swagger.CServerId, ipServiceIpAddr string, 
 	// Refresh server details
 	ipService, cServer, readErr := ReadServer(client, model.CSIPAddr, model.CSPort, ipServiceIpAddr, ipServicePort)
 	if readErr != nil {
+		// If the server or its parent IP service is not found, treat as
+		// already deleted. This handles the case where a previous failed
+		// apply left the state out of sync with the ADC configuration.
+		if strings.HasPrefix(readErr.Error(), errServerNotFound) ||
+			strings.HasPrefix(readErr.Error(), errServiceNotFound) {
+			return nil
+		}
 		return readErr
 	}
 	_, err := DeleteServerById(client, cServer.CId, ipService.InterfaceID, ipService.ChannelID)

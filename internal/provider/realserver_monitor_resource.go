@@ -61,6 +61,10 @@ func (r *realserverMonitorResource) Create(ctx context.Context, req resource.Cre
 		return
 	}
 
+	// Normalize the type from friendly name to backend name so the plan
+	// value matches what the API will store and return.
+	data.Type = types.StringValue(NormalizeMonitorType(data.Type.ValueString()))
+
 	// mutex to allow only a single resource to be managed at once
 	lockName := fmt.Sprintf("realserver_monitor")
 	r.client.mutexKV.Lock(lockName)
@@ -120,6 +124,9 @@ func (r *realserverMonitorResource) Update(ctx context.Context, req resource.Upd
 		return
 	}
 
+	// Normalize the type from friendly name to backend name
+	data.Type = types.StringValue(NormalizeMonitorType(data.Type.ValueString()))
+
 	// mutex to allow only a single resource to be managed at once
 	lockName := fmt.Sprintf("realserver_monitor")
 	r.client.mutexKV.Lock(lockName)
@@ -171,6 +178,41 @@ func (r *realserverMonitorResource) Delete(ctx context.Context, req resource.Del
 func (r *realserverMonitorResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	// Retrieve import ID and save to id attribute
 	resource.ImportStatePassthroughID(ctx, path.Root("name"), req, resp)
+}
+
+// monitorTypeFriendlyToBackend maps UI-friendly monitor type names to the
+// backend names that the ADC API requires. Users may specify either form
+// in their Terraform configuration; the provider normalises to the backend
+// name before sending to the API.
+var monitorTypeFriendlyToBackend = map[string]string{
+	"HTTP 200 OK":   "Check200",
+	"HTTP Head":     "CheckHead",
+	"HTTP Response": "CheckResponse",
+	"TCP Connect":   "Connect",
+	"ICMP Ping":     "Ping",
+	"None":          "None",
+	"DICOM":         "DICOM",
+	"HTTP Post":     "CheckPOST",
+}
+
+// monitorTypeBackendToFriendly is the reverse of monitorTypeFriendlyToBackend.
+var monitorTypeBackendToFriendly map[string]string
+
+func init() {
+	monitorTypeBackendToFriendly = make(map[string]string, len(monitorTypeFriendlyToBackend))
+	for friendly, backend := range monitorTypeFriendlyToBackend {
+		monitorTypeBackendToFriendly[backend] = friendly
+	}
+}
+
+// NormalizeMonitorType converts a friendly UI monitor type name to its
+// backend equivalent. If the value is already a backend name (or unknown)
+// it is returned unchanged.
+func NormalizeMonitorType(t string) string {
+	if backend, ok := monitorTypeFriendlyToBackend[t]; ok {
+		return backend
+	}
+	return t // already a backend name or custom monitor
 }
 
 func ReadRealserverMonitor(client *API, name string) (swagger.RealConfigMonitoringOpt, error) {
@@ -232,7 +274,10 @@ func UpdateRealserverMonitor(client *API, model swagger.RealConfigMonitoringOpt,
 func DeleteRealserverMonitor(client *API, name string) (err error) {
 	configMonitoring, err := ReadRealserverMonitor(client, name)
 	if err != nil {
-		return err
+		// If we can't read the monitor, it may already be gone.
+		// Treat as already deleted to allow destroy to succeed after
+		// a previously failed apply.
+		return nil
 	}
 
 	// If the ReadServerMonitor does not exist, return nil
@@ -254,13 +299,15 @@ func (r *realserverMonitorResource) ToRealserverMonitorOpt(data resource_realser
 		Id:          data.Id.ValueString(),
 		Name:        data.Name.ValueString(),
 		Description: data.Description.ValueString(),
-		Type_:       data.Type.ValueString(),
-		Ssl:         data.Ssl.ValueString(),
-		Url:         data.Url.ValueString(),
-		Content:     data.Content.ValueString(),
-		Username:    data.Username.ValueString(),
-		Password:    data.Password.ValueString(),
-		Threshold:   data.Threshold.ValueString(),
+		// Normalize the type so that users can supply either the friendly UI
+		// name (e.g. "HTTP Head") or the backend name (e.g. "CheckHead").
+		Type_:     NormalizeMonitorType(data.Type.ValueString()),
+		Ssl:       data.Ssl.ValueString(),
+		Url:       data.Url.ValueString(),
+		Content:   data.Content.ValueString(),
+		Username:  data.Username.ValueString(),
+		Password:  data.Password.ValueString(),
+		Threshold: data.Threshold.ValueString(),
 	}
 }
 

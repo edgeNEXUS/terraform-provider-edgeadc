@@ -530,6 +530,12 @@ func DeleteIPService(client *API, ipAddr string, port string) error {
 	// Always GET before POST to avoid "Another user has made changes" error
 	ipService, getErr := ReadIPService(client, ipAddr, port)
 	if getErr != nil {
+		// If the IP service is not found, treat as already deleted.
+		// This handles the case where a previous failed apply left the
+		// state out of sync with the ADC configuration.
+		if strings.HasPrefix(getErr.Error(), errServiceNotFound) {
+			return nil
+		}
 		return getErr
 	}
 

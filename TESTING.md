@@ -1,202 +1,149 @@
-# EdgeADC Terraform Provider - Test Plan & Results
+# EdgeADC Terraform Provider - Testing Guide
 
-## Test Environment
+## Test Structure
 
-| Component | Details |
-|-----------|---------|
-| **Provider Version** | v0.1.15-dev (commit 80ea026) |
-| **EdgeADC Appliance** | 192.168.3.159:443 (HTTPS) |
-| **Terraform Version** | v1.14.5 |
-| **Go Version** | 1.25.5 |
-| **OS** | Rocky Linux 9.7 |
-| **Date** | 2026-02-12 |
+The provider has two categories of tests:
 
-## Resources Tested
+| Category | Count | ADC Required | Run Time | Purpose |
+|----------|-------|-------------|----------|---------|
+| **Unit tests** | 43 | No | < 1 second | Test logic: type mapping, merge functions, error handling, round-trips |
+| **Acceptance tests** | 8 | Yes | ~2-5 minutes | Test against a real ADC: create, read, update, destroy all resource types |
 
-| Resource | CRUD Operations |
-|----------|----------------|
-| `edgeadc_ip_services` | Create, Read, Update, Delete |
-| `edgeadc_realserver_monitor` | Create, Read, Update, Delete |
-| `edgeadc_server` | Create, Read, Update, Delete |
+Unit tests run automatically in CI on every push and PR. Acceptance tests are
+skipped in CI and must be run manually against a real EdgeADC appliance.
 
 ---
 
-## Test 1: Multi-Resource Creation
+## Running Unit Tests (no ADC needed)
 
-**Objective:** Create multiple resources of each type in a single apply.
+```bash
+# Run all unit tests
+go test ./internal/provider/... -v -count=1
 
-**Configuration:** 7 resources total:
-- 2 × `edgeadc_ip_services` (HTTP on :8080, HTTPS on :8443)
-- 2 × `edgeadc_realserver_monitor` (Check200, TCP)
-- 3 × `edgeadc_server` (2 on first VS, 1 on second VS)
+# Run a specific test
+go test ./internal/provider/... -v -run "TestNormalizeMonitorType"
 
-**Result:** ✅ PASS
-
-```
-Apply complete! Resources: 7 added, 0 changed, 0 destroyed.
+# Run only the integration-style mock tests
+go test ./internal/provider/... -v -run "IntegrationStyle"
 ```
 
-All resources created successfully with correct attributes. Server resources correctly waited for their parent `ip_services` to be created first (dependency ordering).
+These tests use mock HTTP responses and never make network calls.
 
 ---
 
-## Test 2: State Consistency (No Drift)
+## Running Acceptance Tests (real ADC)
 
-**Objective:** Verify `terraform plan` shows no changes after a successful apply.
+### Prerequisites
 
-**Result:** ✅ PASS
+1. A test/staging EdgeADC appliance (do **not** use production)
+2. Admin credentials for the appliance
+3. Terraform CLI installed (the test framework downloads it automatically, but
+   having it locally helps for debugging)
+4. Go 1.24+ installed
 
+### Configuration
+
+Set these environment variables:
+
+```bash
+export EDGEADC_ENDPOINT=https://192.168.1.1    # Your ADC URL (with port if needed)
+export EDGEADC_USERNAME=admin                    # ADC admin username
+export EDGEADC_PASSWORD=jetnexus                 # ADC admin password
+export TF_ACC=1                                  # Enable acceptance tests
+export EDGEADC_SKIP_CERT_VERIFY=true             # Optional: skip TLS cert verification
 ```
-No changes. Your infrastructure matches the configuration.
+
+### Running
+
+```bash
+# Run ALL acceptance tests
+go test ./internal/provider/... -v -run "TestAcc" -timeout 300s
+
+# Run only monitor tests
+go test ./internal/provider/... -v -run "TestAccRealserverMonitor" -timeout 300s
+
+# Run only IP services tests
+go test ./internal/provider/... -v -run "TestAccIpServices" -timeout 300s
+
+# Run only server tests
+go test ./internal/provider/... -v -run "TestAccServer" -timeout 300s
+
+# Run the full multi-resource lifecycle test
+go test ./internal/provider/... -v -run "TestAccMultiResource" -timeout 300s
+
+# Run everything (unit + acceptance)
+go test ./internal/provider/... -v -count=1 -timeout 300s
 ```
 
-No drift detected across all 7 resources. All computed attributes (acceleration, caching_rule, cipher_name, etc.) are correctly stored in state using `UseStateForUnknown()` plan modifiers.
+### What the acceptance tests do
+
+Each test creates real resources on the ADC, verifies the attributes, and
+destroys them when finished (even if the test fails). The test framework
+handles cleanup automatically.
+
+| Test | What It Does |
+|------|-------------|
+| `TestAccRealserverMonitor_CreateAndRead` | Create a Check200 monitor, verify attributes, destroy |
+| `TestAccRealserverMonitor_FriendlyTypeName` | Create a monitor using `type = "HTTP Head"`, verify it's normalised to `CheckHead` |
+| `TestAccRealserverMonitor_Update` | Create a monitor, update description and threshold, verify no errors |
+| `TestAccIpServices_CreateAndRead` | Create a VS with `primary_checked = "Active"`, verify attributes, destroy |
+| `TestAccIpServices_PrimaryCheckedEmpty` | Create a VS with `primary_checked = ""`, verify no inconsistency error |
+| `TestAccIpServices_Update` | Create a VS, update service_name, verify no errors |
+| `TestAccServer_CreateUpdateDestroy` | Create VS + server, update weight_factor and notes, verify values persisted |
+| `TestAccMultiResource_FullLifecycle` | Create monitor + VS (with server_monitoring) + server together, verify all attributes |
+
+### Test IP addresses
+
+The acceptance tests use IPs in the `10.254.254.0/24` range and ports
+`19080-19084` to avoid conflicts with existing ADC configuration. If these
+conflict with your environment, edit the test configs in
+`internal/provider/acceptance_test.go`.
+
+### Troubleshooting
+
+**Tests hang or time out:** The ADC may be unreachable. Check
+`EDGEADC_ENDPOINT` and ensure the appliance is running.
+
+**"Session Expired" errors:** The provider handles session re-authentication
+automatically. If tests still fail with session errors, restart the ADC
+management interface.
+
+**Resources left behind after a test crash:** If a test is interrupted (Ctrl+C)
+before cleanup, you may have leftover resources on the ADC. Look for resources
+with names starting with `tf-acc-` and delete them manually.
+
+**TLS certificate errors:** Set `EDGEADC_SKIP_CERT_VERIFY=true` if the ADC
+uses a self-signed certificate.
 
 ---
 
-## Test 3: Resource Updates
+## Unit Test Coverage
 
-**Objective:** Modify multiple attributes across different resource types.
+The unit tests cover every customer-reported bug:
 
-**Changes Applied:**
-| Resource | Field Changed | Old Value | New Value |
-|----------|--------------|-----------|-----------|
-| `test_vs` | service_name | terraform-test-vs | terraform-test-vs-updated |
-| `test_vs2` | service_type | HTTPS | HTTP |
-| `test_monitor` | description | Test monitor from terraform | Updated test monitor |
-| `test_monitor` | threshold | 3 | 5 |
-| `test_monitor2` | type | TCP | Check200 |
-| `test_server1` | weight_factor | 100 | 75 |
-| `test_server1` | cs_notes | terraform test server 1 | terraform test server 1 updated |
-| `test_server2` | cs_notes | terraform test server 2 | terraform test server 2 updated |
-
-**Result:** ✅ PASS
-
-```
-Apply complete! Resources: 0 added, 6 changed, 0 destroyed.
-```
-
-All updates applied correctly. Post-update plan confirmed no drift.
+| Bug | Test(s) |
+|-----|---------|
+| `"HTTP Head"` creates non-functional monitor | `TestNormalizeMonitorType_FriendlyToBackend`, `TestToRealserverMonitorOpt_NormalizesType` |
+| `primary_checked: was "" but now "Passive"/"Active"` | `TestPrimaryChecked_EmptyStringBecomesUnknown`, `TestMergeBasicTabs_SkipsNullValues` |
+| Server update sends empty fields | `TestToUpdateServer_AllFieldsMapped` |
+| `server_monitoring` conversion silently fails | `TestConvertComboOptionsToIds_UnknownName`, `TestConvertComboOptionsToNames_UnknownId` |
+| Monitor ID shifts between applies | `TestRealserverMonitorSchema_IdIsComputedWithoutUseStateForUnknown` |
+| `terraform destroy` fails after failed apply | `TestDeleteServer_NotFound_IntegrationStyle`, `TestDeleteIPService_NotFound_IntegrationStyle`, `TestDeleteServer_ErrorPrefixMatching` |
+| Server with hostname not found on delete | `TestGetServerByAddressAndPortFromIpServices_HostnameNotFound` |
 
 ---
 
-## Test 4: Partial Destroy
+## CI Configuration
 
-**Objective:** Remove some resources while keeping others intact.
+The `.github/workflows/test.yml` workflow runs on every push to `main` and
+every PR:
 
-**Resources Removed:**
-- `edgeadc_ip_services.test_vs2`
-- `edgeadc_server.test_server2`
-- `edgeadc_server.test_server3`
-
-**Resources Kept:**
-- `edgeadc_ip_services.test_vs`
-- `edgeadc_realserver_monitor.test_monitor`
-- `edgeadc_realserver_monitor.test_monitor2`
-- `edgeadc_server.test_server1`
-
-**Result:** ✅ PASS
-
-```
-Apply complete! Resources: 0 added, 0 changed, 3 destroyed.
+```yaml
+steps:
+  - go build ./...      # Compile check
+  - go vet ./...        # Static analysis
+  - go test ./... -v    # Unit tests (acceptance tests auto-skip)
 ```
 
-Terraform correctly destroyed only the removed resources. Remaining resources unaffected.
-
----
-
-## Test 5: Full Destroy
-
-**Objective:** Destroy all remaining resources.
-
-**Result:** ✅ PASS
-
-```
-Destroy complete! Resources: 4 destroyed.
-```
-
-All resources cleanly removed from EdgeADC.
-
----
-
-## Test 6: Recreate After Destroy
-
-**Objective:** Verify resources can be recreated from scratch after full destroy.
-
-**Result:** ✅ PASS
-
-```
-Apply complete! Resources: 4 added, 0 changed, 0 destroyed.
-```
-
-Fresh state, clean creation. Post-create plan confirmed no drift.
-
----
-
-## Test 7: Error Handling - Wrong Credentials
-
-**Objective:** Verify clear error messages when authentication fails.
-
-**Configuration:** Provider with `password = "wrongpassword"`
-
-**Result:** ✅ PASS
-
-```
-│ Error: unable to Create IP Services: IP services data is nil
-```
-
-Provider fails gracefully with a clear error. No crash or panic.
-
----
-
-## Test 8: Session Re-authentication
-
-**Objective:** Verify provider automatically re-authenticates when EdgeADC session expires.
-
-**Background:** EdgeADC API returns `{"LoginStatus":"Session Expired"}` when the session cookie is no longer valid. Previously this caused silent failures.
-
-**Result:** ✅ PASS
-
-The provider now detects `Session Expired` responses in both GET and POST paths, clears the cookie, re-authenticates, and retries the request automatically. This was verified during extended testing sessions where the session expired between operations.
-
----
-
-## Bugs Found & Fixed
-
-| # | Bug | Severity | Fix |
-|---|-----|----------|-----|
-| 1 | **Nil pointer dereference** on resource creation | Critical | Added nil checks for `ConfigMonitoringGrid`, `Dataset`, `Data`, `IpService` pointers in all resource files |
-| 2 | **Session expiration not detected** | Critical | Added session expiry detection and automatic re-authentication in `getEdgeADCObjectInternal()` and `postEdgeADCApiWithHeadersInternal()` |
-| 3 | **Malformed URLs** when `hostPort` is empty | High | Added `buildURL()` helper that properly handles empty hostPort |
-| 4 | **`println()` debug leak** in `UploadCustomMonitorFileEdgeADCApi` | Medium | Removed |
-| 5 | **`log.Fatalln()` kills process** on read errors | High | Replaced with proper `error` returns |
-| 6 | **`fmt.Printf()` in retry logic** | Low | Replaced with `tflog.Debug()` |
-
----
-
-## Code Quality Improvements
-
-- Removed all `println` / `fmt.Printf` debug output
-- Replaced `log.Fatalln` with proper error propagation
-- All logging uses `tflog` (Terraform plugin logging framework)
-- No unused imports
-- Clean `go build` with zero warnings
-
----
-
-## Test Confidence Assessment
-
-| Area | Confidence | Notes |
-|------|-----------|-------|
-| Resource Creation | High | Tested single and multiple resources |
-| Resource Updates | High | Tested attribute changes across all types |
-| Resource Deletion | High | Tested partial and full destroy |
-| State Consistency | High | No drift detected in any scenario |
-| Error Handling | Medium | Tested wrong credentials; unreachable server test inconclusive |
-| Session Management | High | Re-auth logic verified during extended sessions |
-| Concurrent Resources | High | 7 resources created in parallel without issues |
-
-**Overall Confidence: High**
-
-The provider handles the full CRUD lifecycle correctly for all three resource types with proper error handling, session management, and state consistency.
-
+Acceptance tests are **not** run in CI because they require a real ADC. They
+must be run manually before each release.

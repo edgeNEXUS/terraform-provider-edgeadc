@@ -247,6 +247,12 @@ func (r *serverResource) Delete(ctx context.Context, req resource.DeleteRequest,
 	model := r.ToCServerId(data)
 	err := DeleteServer(r.client, model, ipServiceIpAddr, ipServicePort)
 	if err != nil {
+		// Extra safety: if DeleteServer somehow still returns a not-found
+		// error, treat it as success. The resource is already gone.
+		if strings.HasPrefix(err.Error(), errServerNotFound) ||
+			strings.HasPrefix(err.Error(), errServiceNotFound) {
+			return
+		}
 		resp.Diagnostics.AddError(
 			"Unable to Delete Server",
 			err.Error(),

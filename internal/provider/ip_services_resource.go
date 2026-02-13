@@ -282,6 +282,11 @@ func (r *ipServicesResource) Delete(ctx context.Context, req resource.DeleteRequ
 	// Delete API call logic
 	err := DeleteIPService(r.client, data.IpAddr.ValueString(), data.Port.ValueString())
 	if err != nil {
+		// Extra safety: if DeleteIPService somehow still returns a not-found
+		// error, treat it as success. The resource is already gone.
+		if strings.HasPrefix(err.Error(), errServiceNotFound) {
+			return
+		}
 		resp.Diagnostics.AddError(
 			"Unable to Delete IP Services",
 			err.Error(),

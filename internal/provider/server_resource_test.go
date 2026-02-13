@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -170,6 +171,74 @@ func TestGetServerByAddressAndPortFromIpServices_NotFound(t *testing.T) {
 	}
 	if len(err.Error()) < len(errServerNotFound) || err.Error()[:len(errServerNotFound)] != errServerNotFound {
 		t.Errorf("error %q should start with %q", err.Error(), errServerNotFound)
+	}
+}
+
+// TestGetServerByAddressAndPortFromIpServices_HostnameNotFound verifies that
+// using a hostname (not IP) for the server address still produces a properly
+// formatted "server not found" error that the delete handler can recognise.
+//
+// This is the exact scenario from the customer error:
+// "server not found with df-ad-qa-int-linux0.saab-qa.danf.org.uk:8461
+//  for ip_service 10.51.164.2:8461"
+func TestGetServerByAddressAndPortFromIpServices_HostnameNotFound(t *testing.T) {
+	ipServices := swagger.IpServices{
+		Data: &swagger.IpServicesData{
+			Dataset: &swagger.IpServicesDataDataset{
+				IpService: [][]swagger.IpService{
+					{
+						{
+							IpAddr: "10.51.164.2",
+							Port:   "8461",
+							ContentServer: &swagger.IpServiceContentServer{
+								CServerId: []swagger.CServerId{},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	_, _, err := GetServerByAddressAndPortFromIpServices(
+		ipServices,
+		"10.51.164.2", "8461",
+		"df-ad-qa-int-linux0.saab-qa.danf.org.uk", "8461",
+	)
+	if err == nil {
+		t.Fatal("expected error for hostname server not found, got nil")
+	}
+
+	// Verify the error starts with errServerNotFound so delete handling works
+	if !strings.HasPrefix(err.Error(), errServerNotFound) {
+		t.Errorf("error %q must start with %q for delete not-found handling to work",
+			err.Error(), errServerNotFound)
+	}
+}
+
+// TestDeleteServer_NotFoundReturnsNil verifies that DeleteServer returns nil
+// (not an error) when the server doesn't exist. This is essential for
+// terraform destroy to succeed after a failed apply.
+//
+// We can't call the real DeleteServer (needs API), but we can verify the
+// error message format matches what DeleteServer checks.
+func TestDeleteServer_ErrorPrefixMatching(t *testing.T) {
+	// These are the exact error message formats produced by
+	// GetServerByAddressAndPortFromIpServices and GetIpServiceByAddressAndPort
+	testErrors := []string{
+		"server not found with df-ad-qa-int-linux0.saab-qa.danf.org.uk:8461 for ip_service 10.51.164.2:8461",
+		"server not found with 10.0.0.2:8080 for ip_service 10.0.0.1:80",
+		"ip service not found with address: 10.0.0.1 and port: 80",
+	}
+
+	for _, errMsg := range testErrors {
+		t.Run(errMsg[:30], func(t *testing.T) {
+			matched := strings.HasPrefix(errMsg, errServerNotFound) ||
+				strings.HasPrefix(errMsg, errServiceNotFound)
+			if !matched {
+				t.Errorf("error %q is not matched by delete not-found handling", errMsg)
+			}
+		})
 	}
 }
 

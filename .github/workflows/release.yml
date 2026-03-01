@@ -72,7 +72,7 @@ jobs:
           sha256sum * > "SHA256SUMS_${{ matrix.goos }}_${{ matrix.goarch }}"
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: artifact-${{ matrix.goos }}-${{ matrix.goarch }}
           path: dist/*
